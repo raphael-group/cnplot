@@ -18,7 +18,8 @@ whose core computation needs scipy. This keeps the dependency set at numpy, pand
 matplotlib, seaborn, adjustText - no optional scientific dependencies.
 
 Priority: M1 -> M2 -> M3 is the critical path; it retires the hard duplication in plan.md
-section 3. M4+ are additive.
+section 3. M1 and M2 are done, so M3 is next and is where the duplication actually gets
+deleted from the host repos. M4+ are additive.
 
 ---
 
@@ -45,40 +46,54 @@ and `ruff check` clean.
 - [x] No CLI entry point - API-only library; plotting CLIs stay in the host repos.
 - [ ] `twine check dist/*` before first upload (twine is in the `dev` extra, not `base`).
 
-## M1. `cnplot_utils.py` - genome coordinate model (blocks everything else)
+## M1. `cnplot_utils.py` - genome coordinate model - DONE
 
-The strongest cross-repo duplication: all three repos map bins to genome x-coordinates with
-incompatible implementations.
+The strongest cross-repo duplication: all three repos mapped bins to genome x-coordinates
+with incompatible implementations. Verified by a differential test against the four
+originals inlined verbatim; all fields match exactly (see "Verification" below).
 
-- [ ] One coordinate builder subsuming:
-      - HATCHet `get_abs_positions_ignore_gap` / `get_abs_positions_keep_gap`
-      - Copytyping `build_wl_coords` (positions, abs_starts/ends, x_edges, col_bin_ids,
-        ch_coords, seg_coords, chr_vlines, chr_end, xlab_chrs, xtick_chrs)
-      - UGP `_genome_coords` (genome_x, chrom_bounds, total_len)
-- [ ] Return a `GenomeAxis` dataclass instead of the current 3-to-9 tuple returns;
-      Copytyping's dict is the closest superset - use it as the field list.
-- [ ] Both modes in one call: gap-collapsed (whitelist/centromere aware) and gap-preserving
-      (chrom_sizes + `chr_shift`).
-- [ ] Both input shapes: `#CHR/START/END` bins and `#CHR/POS` sites.
-- [ ] One `decorate_genome_axis()` replacing HATCHet's inline decoration, Copytyping
-      `_draw_chr_boundaries` + `_decorate_cnp_xaxis`, and UGP `_add_chrom_decorations`.
-- [ ] Port `get_chr_sizes` / reference-genome tables so cnplot has no host-repo imports.
-- [ ] Port `get_transparency` (HATCHet) and `adaptive_dot_size` (UGP).
-- [ ] Port the `PdfPages` context wrapper (Copytyping `plot_common`).
-- [ ] Port `_parse_bed_by_chr` / region + blacklist BED handling (UGP).
+- [x] `build_genome_axis()` subsumes `get_abs_positions_ignore_gap` /
+      `get_abs_positions_keep_gap` (HATCHet), `build_wl_coords` (Copytyping), and
+      `_genome_coords` (UGP).
+- [x] Returns a `GenomeAxis` dataclass instead of 3-to-9 tuple returns. Copytyping's dict
+      was the superset; `chr_end`, `chr_boundaries`, `xtick_chrs`, `xlab_chrs` are
+      properties, so nothing can drift out of sync with `ch_coords`.
+- [x] Both layouts in one call: `wl_segments=` (collapsed) or `chrom_sizes=` (linear),
+      with `chr_shift` padding either. Passing both or neither raises.
+- [x] `contain=` selects bin membership: True = fully inside (HATCHet CNV profiles),
+      False = overlap and clip (Copytyping scatter/heatmap). One code path serves both,
+      since clipping is a no-op under containment.
+- [x] Both input shapes: `#CHR/START/END` bins and `#CHR/POS` sites.
+- [x] `decorate_genome_axis()`, `draw_chr_boundaries()`, `draw_segment_boundaries()`,
+      and `shade_regions()` replace the three inline decorators.
+- [x] Ported `get_chr_sizes`, `get_transparency`, `adaptive_dot_size`, `FigureSaver`,
+      and `read_bed_by_chr`. No host-repo imports remain.
 
-## M2. `cnplot_colormap.py` - palettes
+Two deliberate behavior changes, both documented in the docstrings:
 
-- [ ] `get_cn_colors()` - byte-identical in HATCHet and Copytyping; move once, delete both.
-- [ ] `get_ascn_colors()` - identical / near-identical; same treatment.
-- [ ] `build_cnp_palette` + `_distinct_subclonal_colors` (HATCHet): clonal/subclonal palette.
-- [ ] `make_baf_cmap` (Copytyping): BAF diverging colormap (`TwoSlopeNorm`).
-- [ ] Label-color machinery (Copytyping `plot_common`): `build_label_colors`,
-      `build_label_color_maps`, `build_categorical_color_map`, `_clone_order_key`,
-      `_is_normal_like`, `_is_colored_label`.
-- [ ] Reconcile with HATCHet `set_palette` (same concept, different entry point).
-- [ ] Decide whether `NA_CELLTYPE` / `INVALID_LABELS` / `is_tumor_label` conventions move in
-      or stay caller-supplied. Leaning caller-supplied - Copytyping semantics, not plotting.
+- `seg_coords` follows Copytyping's rule, which also marks a removed leading telomere
+  (first whitelist segment starting past 0). HATCHet marked only internal joins, so a
+  leading-gap whitelist now yields one extra dashed line. Confirmed by the test.
+- `get_transparency` takes `cols=("RD", "BAF")` instead of hardcoding those columns.
+- `shade_regions` raises on a collapsed axis, where a raw interval has no single span.
+  UGP drew chromosome labels via `ax.text`; cnplot uses real ticks.
+
+## M2. `cnplot_colormap.py` - palettes - DONE
+
+- [x] `get_cn_colors()` - was byte-identical in both repos; now single-source. Palette and
+      state list lifted to module constants so the table is visible without reading the
+      function. Verified against the original 20 entries, both orderings.
+- [x] `get_ascn_colors()` - same treatment; values verified.
+- [x] `build_cnp_palette` + `_distinct_subclonal_colors` (HATCHet).
+- [x] `make_baf_cmap` (Copytyping). Note it uses `ListedColormap` + `BoundaryNorm`, not
+      `TwoSlopeNorm` as the earlier inventory claimed.
+- [x] Label-color machinery: `build_label_colors`, `build_label_color_maps`,
+      `build_categorical_color_map`, `_clone_order_key`, `_is_normal_like`,
+      `_is_colored_label`, `_label_color_index`.
+- [x] `set_palette` ported from HATCHet; docstring flags that it mutates seaborn globals.
+- [x] Resolved: `INVALID_LABELS` / `NA_CELLTYPE` ship as module defaults but every function
+      that consults them takes `invalid_labels=` / `na_labels=` overrides. Callers keep
+      control of what "missing" means without having to pass it every call.
 
 ## M3. `cnplot_cnp.py` - integer CN profiles and legends
 
@@ -146,7 +161,9 @@ Copytyping-only, no dedup pressure.
 - [ ] Remove all `from hatchet.* import` / `from copytyping.* import` / `import *` usages.
 - [ ] Type hints on all public functions; Google-style docstrings with Args/Returns.
 - [ ] Tests: golden-image or numeric-invariant per module (matplotlib `Agg`), with synthetic
-      fixtures for CNP strings, whitelist segments, and cell matrices.
+      fixtures for CNP strings, whitelist segments, and cell matrices. M1/M2 were verified
+      by a throwaway differential script against the inlined originals; fold that approach
+      into `tests/` so the equivalence keeps being checked.
 - [ ] Docs: README API section + an `examples/` notebook per module.
 - [ ] `CHANGELOG.md` (empty): start at 0.1.0.
 - [ ] Publish: TestPyPI first, then PyPI trusted publishing via GitHub Actions on tag.
