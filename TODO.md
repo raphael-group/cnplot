@@ -17,11 +17,29 @@ Out: preprocessing QC (stays in UGP), spatial/Visium (stays in Copytyping), and 
 whose core computation needs scipy. This keeps the dependency set at numpy, pandas,
 matplotlib, seaborn, adjustText - no optional scientific dependencies.
 
-Priority: M1 -> M2 -> M3 is the critical path; it retires the hard duplication in plan.md
-section 3. M1 and M2 are done, so M3 is next and is where the duplication actually gets
-deleted from the host repos. M4+ are additive.
+Priority: M1 -> M2 -> M3 was the critical path; it retires the hard duplication in plan.md
+section 3. M0-M3 are done. M4+ are additive.
+
+Ground rule: cnplot never modifies or deletes files in the sibling repos, and downstream
+migration is not interleaved with the build. Finish the package first (M0-M8), then do the
+migration in one pass - see M9. Until then the host repos keep their own copies and nothing
+outside `cnplot/` is touched.
 
 ---
+
+## Module layout
+
+| Module | Contents |
+|---|---|
+| `cnplot_io_utils` | `read_chr_sizes`, `read_bed` - reference readers, pandas only |
+| `cnplot_colormap` | integer-CN, allele-CN, and categorical label palettes |
+| `cnplot_genome_axis` | `GenomeAxis`, `Gap`, `Segment`, `BinCoords` - pure geometry |
+| `cnplot_utils` | column-name constants, axis decoration, marker styling, `FigureSaver` |
+| `cnplot_intcnp` | `plot_cnv_profile`, `plot_cnv_legend` (+ legacy ascn pair) |
+
+Dependencies run one way: `io_utils` and `colormap` are leaves, `genome_axis` -> `io_utils`,
+`utils` -> `genome_axis`, `intcnp` -> all three. `io_utils` and `genome_axis` are
+matplotlib-free, so the coordinate logic is testable without a plotting backend.
 
 ## M0. Package scaffolding - DONE
 
@@ -46,41 +64,98 @@ and `ruff check` clean.
 - [x] No CLI entry point - API-only library; plotting CLIs stay in the host repos.
 - [ ] `twine check dist/*` before first upload (twine is in the `dev` extra, not `base`).
 
-## M1. `cnplot_utils.py` - genome coordinate model - DONE
+## M1. `cnplot_genome_axis.py` - genome coordinate model - DONE
 
 The strongest cross-repo duplication: all three repos mapped bins to genome x-coordinates
-with incompatible implementations. Verified by a differential test against the four
-originals inlined verbatim; all fields match exactly (see "Verification" below).
+with incompatible implementations, each returning a different tuple.
 
-- [x] `build_genome_axis()` subsumes `get_abs_positions_ignore_gap` /
-      `get_abs_positions_keep_gap` (HATCHet), `build_wl_coords` (Copytyping), and
-      `_genome_coords` (UGP).
-- [x] Returns a `GenomeAxis` dataclass instead of 3-to-9 tuple returns. Copytyping's dict
-      was the superset; `chr_end`, `chr_boundaries`, `xtick_chrs`, `xlab_chrs` are
-      properties, so nothing can drift out of sync with `ch_coords`.
-- [x] Both layouts in one call: `wl_segments=` (collapsed) or `chrom_sizes=` (linear),
-      with `chr_shift` padding either. Passing both or neither raises.
-- [x] `contain=` selects bin membership: True = fully inside (HATCHet CNV profiles),
-      False = overlap and clip (Copytyping scatter/heatmap). One code path serves both,
-      since clipping is a no-op under containment.
+`GenomeAxis` is a **coordinate transform, not a parallel array**. It is constructed from
+the reference alone and then maps any bin table by `(#CHR, START, END)`:
+
+    genome_axis = GenomeAxis(region_bed, chrom_sizes)      # once
+    coords = genome_axis.build_coordinates(seg_df, contain=True)
+
+One axis therefore serves several samples, several bin resolutions, and every panel of a
+figure. An earlier version indexed per-bin arrays by row position, which forced a length
+check against the table being drawn; matching by coordinate removed that coupling
+entirely.
+
+- [x] Subsumes `get_abs_positions_ignore_gap` / `get_abs_positions_keep_gap` (HATCHet),
+      `build_wl_coords` (Copytyping), and `_genome_coords` (UGP).
+- [x] A plain class: `__init__(region_bed, chrom_sizes, excluded_chroms, chr_shift,
+      collapse_gaps)` reads both files itself via `read_bed` / `read_chr_sizes`. There is
+      no separate builder function and no derive-a-whitelist fallback - the reference is
+      always supplied.
+- [x] `Segment` records carry the transform; `chrs`, `chr_end`, `chr_boundaries`,
+      `xtick_chrs`, `xlab_chrs`, `chr_offsets` are properties, so nothing can drift out of
+      sync with `ch_coords`.
+- [x] `build_coordinates(df, contain=)` returns `BinCoords`; `contain=True` takes bins
+      fully inside a segment (integer-CN profiles), False clips overlapping bins (scatter,
+      heatmap). `grid(df)` returns the `pcolormesh` mesh for M6.
 - [x] Both input shapes: `#CHR/START/END` bins and `#CHR/POS` sites.
-- [x] `decorate_genome_axis()`, `draw_chr_boundaries()`, `draw_segment_boundaries()`,
-      and `shade_regions()` replace the three inline decorators.
-- [x] Ported `get_chr_sizes`, `get_transparency`, `adaptive_dot_size`, `FigureSaver`,
-      and `read_bed_by_chr`. No host-repo imports remain.
+- [x] `excluded_chroms`, default `("chrX", "chrY", "chrM")`, filters both the sizes and the
+      regions before building. Matched ignoring case and any `chr` prefix, so an
+      unprefixed reference works too. Pass `[]` to keep everything.
+- [x] Unmapped bins are reported: `build_coordinates` warns with a split between bins on
+      chromosomes the axis does not carry and bins falling inside gaps. Only mapped bins
+      are drawn.
+- [x] `decorate_genome_axis`, `draw_chr_boundaries`, `draw_segment_boundaries`, and
+      `shade_regions` in `cnplot_utils` replace the three inline decorators. They take
+      `genome_axis`, not `axis`, to keep it distinct from matplotlib's `ax`.
 
-Two deliberate behavior changes, both documented in the docstrings:
+Behavior changes vs the originals, all documented in the docstrings:
 
-- `seg_coords` follows Copytyping's rule, which also marks a removed leading telomere
-  (first whitelist segment starting past 0). HATCHet marked only internal joins, so a
-  leading-gap whitelist now yields one extra dashed line. Confirmed by the test.
+- **Gaps are first-class, and shrinking them is optional.** `collapse_gaps=True` (default)
+  removes uncovered stretches, so the axis is the regions concatenated and every `Gap` is
+  zero-width - what both host repos did. `collapse_gaps=False` lays chromosomes out at
+  full length, so bins keep true spacing and every `Gap` keeps its real width. Neither host
+  repo could do the latter: HATCHet's `get_abs_positions_keep_gap` preserves spacing but
+  discards the whitelist, so it cannot say where the gaps are.
+
+  The same bin gets **different coordinates** under the two, so one axis must not be shared
+  across them. `Gap` keeps `raw_start`/`raw_end` either way, so a shrunk dash can still
+  report the size of the region it stands for.
+
+- **Gaps are found by comparing segments, not counting them.** Both host repos placed
+  dashed lines by *counting* (`si < n_seg - 1`, plus a broken special case in Copytyping
+  that could only fire on single-segment chromosomes and recorded the segment END rather
+  than the leading boundary). cnplot compares consecutive regions against the chromosome,
+  so a gap is reported only where material is actually missing:
+
+  | Gap | Detected from | Lands on |
+  |---|---|---|
+  | leading | first region `START > 0` | chromosome start offset |
+  | interior | `next.START > this.END` | strictly inside the chromosome |
+  | trailing | last region `END < chrom_size` | chromosome end offset |
+
+  Consequences the count-based rule got wrong: adjacent regions leave no gap and are no
+  longer marked; trailing gaps are detectable at all, which is why `chrom_sizes` is
+  required; a chromosome with no regions is dropped when gaps are shrunk and kept as one
+  full-length gap when they are not; a region overrunning its chromosome raises.
+
+  Verified across the full matrix: 0/1/2/3 regions per chromosome, each with and without
+  leading, interior, and trailing gaps, adjacent vs separated regions, and both
+  `collapse_gaps` settings side by side.
+
+- **Chromosome order always follows the sizes file**, never sorted, so `chr10` does not
+  land between `chr1` and `chr2`. Order is the user's knob: reorder that file and the axis
+  follows. Earlier the two layouts took order from *different* files, so flipping
+  `collapse_gaps` could silently reorder the genome.
+
+- `shade_regions` intersects each interval with each segment, so it works on either layout
+  and a region crossing a shrunk gap shades as the two pieces actually drawn. It takes the
+  region table, the same shape the axis is built from; the second `{chrom: [(s, e)]}`
+  representation and its reader are gone.
 - `get_transparency` takes `cols=("RD", "BAF")` instead of hardcoding those columns.
-- `shade_regions` raises on a collapsed axis, where a raw interval has no single span.
-  UGP drew chromosome labels via `ax.text`; cnplot uses real ticks.
+- UGP drew chromosome labels via `ax.text`; cnplot uses real ticks.
+- `get_clone_ylabels` (was Copytyping's `_clone_ylabels`) lives in `cnplot_utils`, takes
+  clone *names* rather than a count, and types `clone_ploidies` as `dict` - which is what
+  the body always required, though Copytyping annotated it `list | None`.
 
 ## M2. `cnplot_colormap.py` - palettes - DONE
 
-- [x] `get_cn_colors()` - was byte-identical in both repos; now single-source. Palette and
+- [x] `get_cn_colors()` - was byte-identical in both repos; now single-source in cnplot
+      (the host-repo copies stay put until their owners retire them). Palette and
       state list lifted to module constants so the table is visible without reading the
       function. Verified against the original 20 entries, both orderings.
 - [x] `get_ascn_colors()` - same treatment; values verified.
@@ -95,21 +170,69 @@ Two deliberate behavior changes, both documented in the docstrings:
       that consults them takes `invalid_labels=` / `na_labels=` overrides. Callers keep
       control of what "missing" means without having to pass it every call.
 
-## M3. `cnplot_cnp.py` - integer CN profiles and legends
+## M3. `cnplot_intcnp.py` - integer CN profiles and legends - DONE
 
-The 6-function hard-duplication block (plan.md section 3).
+The 6-function hard-duplication block (plan.md section 3), now single-sourced.
 
-- [ ] Unify `plot_cnv_profile`: HATCHet `(bin_info, regions)` vs Copytyping
-      `(seg_cnprofile, wl_segments)` - same semantics, drifted names. Build on `GenomeAxis`.
-- [ ] Unify `plot_ascn_profile` (same drift).
-- [ ] Unify `plot_cnv_legend` / `plot_ascn_legend`; keep Copytyping's `has_mirror` extension
-      (`cnp_has_mirror`, `_draw_mirror_swatch`) opt-in so HATCHet callers are unaffected.
-- [ ] Keep Copytyping's optional `PI_VIOL` per-bin violation overlay behind a flag.
-- [ ] Port `_cnp_segment_geometry`, `_clone_ylabels`.
-- [ ] Document the CNP string contract: `";"`-joined per clone, `"a|b"` per clone, first
-      field is normal, `PROPS` gives clone proportions.
-- [ ] Migration shims in HATCHet3 and Copytyping, then delete the local copies. This is the
-      payoff - do not stop at M3 without the deletion.
+Not needed here - covered elsewhere: `_cnp_segment_geometry` (subsumed by
+`GenomeAxis.build_coordinates`), `_draw_chr_boundaries` / `_decorate_cnp_xaxis` (M1),
+`_clone_ylabels` (now `get_clone_ylabels` in `cnplot_utils`), and the palettes (M2).
+
+Public surface is two functions; everything else is support code:
+
+    axis = GenomeAxis(region_bed, chrom_sizes)
+    plot_cnv_profile(ax, seg_df, axis, sample_id="HT941")
+    plot_cnv_legend(ax2, has_mirror=...)
+
+- [x] The interface is the seg.ucn table itself, not parallel arrays: "#CHR"/"START"/"END",
+      `cn_<clone>` columns of `"a|b"` strings, matching `u_<clone>` proportions, an
+      optional `PI_VIOL` flag, and an optional `SAMPLE` column. Clone names, stacking
+      order, proportions, the normal clone, and the violation flags all come from the
+      columns.
+- [x] Table readers: `select_sample`, `get_clone_names`, `get_clone_states` (n, k, 2 int
+      array), `get_clone_proportions`, `get_pi_viol`, `has_mirror`. The CNP-string helpers
+      are gone - a `";"`-joined string was only ever an intermediate the loaders built on
+      top of these same columns.
+- [x] `sample_id=` selects one sample from a multi-sample table; None takes the first and
+      logs which.
+- [x] `normal="normal"` names the clone to exclude, by column name. None draws every clone,
+      and `clones=` overrides the set and stacking order outright. The earlier structural
+      detector is gone: with named columns the name is the identifier, so a genome-wide
+      diploid tumor clone is no longer ambiguous.
+- [x] `plot_cnv_profile`, `plot_cnv_legend`.
+- [x] `PI_VIOL` overlay, picked up automatically when the column is present (matched
+      case-insensitively), suppressible with `show_pi_viol=False`.
+- [x] Mirror rule corrected. A bin is mirrored when its clones **disagree** on which allele
+      is amplified - some clone with a > b and another with a < b - not when any single
+      clone has b > a. Both host repos use the per-clone test, which fires on a uniformly
+      `1|2` bin (a pure allele-labelling artefact, since the palette gives (a, b) and
+      (b, a) one color) and on `1|1` + `1|2` (nothing disagrees). One `_mirrored_bins`
+      helper now drives the hatch, the chevrons, and the legend swatch.
+- [x] `plot_ascn_profile` / `plot_ascn_legend` moved to a Legacy section: unexported,
+      docstring-flagged, kept for the HATCHet figures that use them. They are not
+      superseded - the joint palette never shows per-allele copy number - so the note says
+      so rather than pointing at a replacement.
+
+Verified by reading all 7 benchmark `seg.ucn` files off disk and plotting with no manual
+assembly, across 3- and 4-clone solutions: clone names and order, state array shape,
+proportions, y-tick count/order/labels, every rectangle's facecolor against
+`get_cn_colors`, `normal=None`, a `clones=` subset, custom and missing normal names,
+`show_prop=False`, `PI_VIOL` pickup in both cases, multi-sample selection by default and
+by id, and the empty-table / missing-column / unknown-sample errors.
+
+Reconciled drift, all now explicit parameters rather than per-repo behavior:
+
+- HATCHet's `show_prop` survives as a flag; values come from the `u_<clone>` columns.
+  Copytyping had no proportion line.
+- Copytyping's clone separators become `clone_separators` (default on).
+- Bin membership (containment vs overlap) lives in the axis, so neither repo's choice is
+  hardcoded.
+- Copytyping bolded CNV row labels, HATCHet did not; cnplot bolds them.
+- The mirror-rule fix above changes output for both repos - flag it in M9.
+
+Left for M3: nothing. The one open thread is the differential test, which still targets the
+pre-class `build_genome_axis` signature and needs rewriting against `GenomeAxis` - tracked
+under M8.
 
 ## M4. `cnplot_1d.py` - 1D genome scatter
 
@@ -161,12 +284,31 @@ Copytyping-only, no dedup pressure.
 - [ ] Remove all `from hatchet.* import` / `from copytyping.* import` / `import *` usages.
 - [ ] Type hints on all public functions; Google-style docstrings with Args/Returns.
 - [ ] Tests: golden-image or numeric-invariant per module (matplotlib `Agg`), with synthetic
-      fixtures for CNP strings, whitelist segments, and cell matrices. M1/M2 were verified
-      by a throwaway differential script against the inlined originals; fold that approach
-      into `tests/` so the equivalence keeps being checked.
+      fixtures for region BEDs, sizes files, and seg.ucn tables. The differential script
+      that checked M1/M2 against the inlined originals still targets the pre-class
+      `build_genome_axis` signature and needs rewriting against `GenomeAxis`; fold it into
+      `tests/` so the equivalence keeps being checked rather than being a one-off result.
 - [ ] Docs: README API section + an `examples/` notebook per module.
 - [ ] `CHANGELOG.md` (empty): start at 0.1.0.
 - [ ] Publish: TestPyPI first, then PyPI trusted publishing via GitHub Actions on tag.
+
+## M9. Downstream migration - LAST, only after M0-M8 are finished
+
+Deliberately deferred to the end. Nothing here starts while the package is still being
+built, and none of it edits or deletes files in the sibling repos on cnplot's behalf.
+
+- [ ] Precondition: M0-M8 complete, tests in place, and a version published.
+- [ ] Per-function equivalence report: for every function cnplot replaces, confirm the
+      cnplot version matches the host-repo original on real data, and list the deliberate
+      divergences - see the M1 list. Flag one to Copytyping specifically: cnplot fixes the
+      `seg_coords` leading-gap bug, so adopting it removes a stray dashed line from any
+      figure with a single-segment chromosome whose whitelist starts past 0.
+- [ ] Propose re-export shims for HATCHet3 and Copytyping (`from cnplot... import ...` in
+      place of the local copy) so their call sites keep working unchanged.
+- [ ] Hand the shims to each repo's owner. Removing the superseded local copies is their
+      call, not cnplot's.
+- [ ] Only after a repo has adopted cnplot: revisit anything descoped for lack of a second
+      consumer, e.g. HATCHet's `plot_clusters` (M5) and the clone tree (M7).
 
 ---
 
@@ -178,5 +320,5 @@ Copytyping-only, no dedup pressure.
 - [ ] **Axes-in vs figure-out.** HATCHet/Copytyping primitives take `ax`; UGP functions
       create figures and write files. Standardize on `ax`-taking primitives plus thin page
       builders.
-- [ ] **Migration sequencing.** Land 0.1.0 with M1-M3, cut over both host repos, then
-      continue - rather than porting everything before any repo depends on it.
+- [x] **Migration sequencing.** Resolved: build the whole package first, migrate once at
+      the end. See M9.
