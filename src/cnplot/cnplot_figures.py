@@ -352,16 +352,17 @@ def plot_heatmap_cnp(
     title: str | None = None,
     figsize: tuple = (15, 8),
     height_ratios: tuple = (10, 2, 1.5),
-    profile_hspace: float = 0.18,
-    top: float = 0.84,
+    profile_hspace: float = 0.35,
+    top: float = 0.9,
     profile_kwargs: dict | None = None,
     **heatmap_kwargs,
 ) -> plt.Figure:
     """Compose the single-cell heatmap page: mesh, CN profile, and legend.
 
     Three stacked rows - the value heatmap (with its colorbar, side strips, and
-    legends), the integer-CN profile, and the profile legend. Only the heatmap
-    carries chromosome names, so the profile is drawn without them.
+    legends), the integer-CN profile, and the profile legend. The chromosome
+    names sit on top of the profile, between it and the heatmap above, and label
+    both; the heatmap itself is drawn without them.
 
     Everything that shapes the mesh - the row-reduced ``matrix``, its ``cmap`` /
     ``norm``, and the ``strips`` - is a ``plot_heatmap`` argument passed straight
@@ -376,22 +377,25 @@ def plot_heatmap_cnp(
         title: Figure title, bold, above the heatmap. None omits it.
         figsize: Figure size in inches.
         height_ratios: Row heights for (heatmap, profile, legend).
-        profile_hspace: Space between the heatmap and the profile below it.
+        profile_hspace: Space between the heatmap and the profile below it; holds
+            the chromosome labels drawn on top of the profile.
         top: Top of the axes block in figure fraction; the space above holds the
-            heatmap's rotated chromosome labels and the title.
+            title.
         profile_kwargs: Extra arguments for
-            :func:`~cnplot.cnplot_intcnp.plot_cnv_profile`. ``plot_chrname`` is
-            forced off since the heatmap already labels the chromosomes.
+            :func:`~cnplot.cnplot_intcnp.plot_cnv_profile`. ``plot_chrname``
+            defaults on so the profile carries the chromosome labels.
         **heatmap_kwargs: Passed to :func:`~cnplot.cnplot_heatmap.plot_heatmap`;
-            ``show_colorbar`` and hidden block labels default on for the page.
+            ``show_colorbar`` and hidden block labels default on for the page, and
+            ``plot_chrname`` is forced off so only the profile labels chromosomes.
 
     Returns:
         The figure. The caller saves and closes it.
     """
     heatmap_kwargs.setdefault("show_colorbar", True)
     heatmap_kwargs.setdefault("show_block_labels", False)
+    heatmap_kwargs["plot_chrname"] = False
     profile_kwargs = dict(profile_kwargs or {})
-    profile_kwargs["plot_chrname"] = False
+    profile_kwargs.setdefault("plot_chrname", True)
 
     fig, axes = plt.subplots(
         3, 1, figsize=figsize, gridspec_kw={"height_ratios": list(height_ratios)}

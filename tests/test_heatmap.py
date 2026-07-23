@@ -214,7 +214,8 @@ def test_plot_heatmap_cnp_page(axis, sim, saved):
     assert len([p for p in profile_ax.patches if isinstance(p, Rectangle)]) >= 2 * n_seg
     # colorbar + one strip axes were added beyond the three base axes
     assert len(fig.axes) >= 3 + 2
-    # only the heatmap carries chromosome labels; the profile does not
+    # chromosome labels sit on the profile (top), not the heatmap
     prof_labels = [t.get_text() for t in profile_ax.get_xticklabels() if t.get_text()]
-    assert prof_labels == []
+    heat_labels = [t.get_text() for t in heatmap_ax.get_xticklabels() if t.get_text()]
+    assert prof_labels and heat_labels == []
     saved(fig, "heatmap_cnp_page")
