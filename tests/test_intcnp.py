@@ -3,12 +3,8 @@
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from cnplot.cnplot_intcnp import (
-    get_clone_names,
-    get_clone_states,
-    has_mirror,
-    plot_cnv_profile,
-)
+from cnplot import plot_cnv_profile
+from cnplot.cnplot_intcnp import get_clone_names, get_clone_states, has_mirror
 
 
 def _cnv_swatch(ax_leg):

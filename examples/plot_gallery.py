@@ -26,19 +26,17 @@ from matplotlib.colors import TwoSlopeNorm
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "tests"))
 
-from cnplot.cnplot_2d import plot_scatter_2d  # noqa: E402
-from cnplot.cnplot_colormap import (  # noqa: E402
+from cnplot import (  # noqa: E402
+    GenomeAxis,
     build_label_cmaps,
     build_mixture_cn_cmap,
     get_baf_cmap,
-)
-from cnplot.cnplot_figures import (  # noqa: E402
     make_row_spec,
+    plot_cnv_profile,
     plot_heatmap_cnp,
     plot_scatter_1d_multisample,
+    plot_scatter_2d,
 )
-from cnplot.cnplot_genome_axis import GenomeAxis  # noqa: E402
-from cnplot.cnplot_intcnp import plot_cnv_profile  # noqa: E402
 from simulate import reference, simulate  # noqa: E402
 
 

@@ -1,0 +1,94 @@
+# Input / Output Reference
+
+---
+
+## `region_bed`
+
+Headerless, tab-separated file. Read by `GenomeAxis` (via `read_bed`); the whitelist regions
+the genome axis is drawn from.
+
+| Column | Required | Type | Description |
+|---|---|---|---|
+| `#CHR` | Yes | str | Chromosome. |
+| `START` | Yes | int | Region start (0-based). |
+| `END` | Yes | int | Region end. |
+| name | No | str | 4th column (e.g. arm id); read but not used. |
+
+## `chrom_sizes`
+
+Headerless, whitespace-separated file. Read by `GenomeAxis`.
+
+| Column | Required | Type | Description |
+|---|---|---|---|
+| chromosome | Yes | str | Chromosome name. Row order sets the axis chromosome order. |
+| length | Yes | int | Chromosome length. |
+
+## `seg_df` (seg.ucn profile)
+
+Integer copy-number profile, one row per segment. Consumed by `plot_cnv_profile` and, in the
+2D form below, by `plot_scatter_2d`.
+
+| Column | Required | Type | Description |
+|---|---|---|---|
+| `SAMPLE` | For multi-sample | str | Sample id; needed only when the table stacks several samples (select with `sample_id=`). |
+| `#CHR` | Yes | str | Chromosome. |
+| `START` | Yes | int | Segment start. |
+| `END` | Yes | int | Segment end. |
+| `cn_(\w+)` | Yes (>= 1) | str | Per-clone allele copy number as `"a\|b"`, one column per clone (`cn_normal`, `cn_clone1`, ...). |
+| `u_(\w+)` | No | float | Per-clone proportion in `[0, 1]`; drives the proportion legend. Constant down the column. |
+| `PI_VIOL` | No | bool | Per-segment pure-integer-violation flag; drawn as a red/green overlay. Matched case-insensitively. |
+
+## `obs_df` (per-bin observations)
+
+Per-bin values for the scatter plots. Consumed by `plot_scatter_1d` /
+`plot_scatter_1d_multisample` (`ycol`) and `plot_scatter_2d` (`xcol`, `ycol`).
+
+| Column | Required | Type | Description |
+|---|---|---|---|
+| `#CHR` | Yes | str | Chromosome. |
+| `START` | Yes | int | Bin start. |
+| `END` | Yes | int | Bin end. |
+| group | For multi-sample | str | Group / sample id; column name set by `group_col=` (default `SAMPLE`). |
+| value | Yes (>= 1) | float | The plotted quantity, named freely and passed as `ycol` / `xcol` (e.g. `RD`, `BAF`, `FCN-A`). Used as given - no scaling or log. |
+| hue | No | any | Categorical column to color points by, named via `hue=` (e.g. `cnp` holding the joint `"a\|b;a\|b"` state). |
+| `keep_col` | No | bool | Marks bins that passed upstream QC; False bins are drawn in `filtered_color`. Column name set by `keep_col=`. |
+
+## `expected_df` (1D overlay)
+
+Expected value per segment (or bin) for the step overlay on `plot_scatter_1d`. May be coarser
+than `obs_df` - it maps through the same axis.
+
+| Column | Required | Type | Description |
+|---|---|---|---|
+| `#CHR` | Yes | str | Chromosome. |
+| `START` | Yes | int | Segment/bin start. |
+| `END` | Yes | int | Segment/bin end. |
+| `exp_(\w+)_(\w+)` | Yes | float | Expected value, one `exp_<value>_<group>` column per value per group (e.g. `exp_RD_S1`). A missing column simply draws no overlay for that group. |
+
+## `expected_df` (2D landmarks)
+
+Expected copy-number landmarks for `plot_scatter_2d`; a seg.ucn-style table with precomputed
+landmark coordinates.
+
+| Column | Required | Type | Description |
+|---|---|---|---|
+| `SAMPLE` | For multi-sample | str | Group id; selected with `group=`. |
+| `#CHR`, `START`, `END` | No | str/int | Provenance only; landmarks key on CN state, not position. |
+| `cn_(\w+)` | Yes | str | Per-clone `"a\|b"` CN, one column per clone; sets each landmark's `(a, b)` label and dedup key. |
+| `u_(\w+)` | No | float | Per-clone proportion; drives the proportion legend. |
+| `exp_<xcol>` | Yes | float | Landmark x coordinate (matches the observed `xcol`). |
+| `exp_<ycol>` | Yes | float | Landmark y coordinate (matches the observed `ycol`). |
+| `is_filtered` | No | bool | Drop this landmark from the plot. |
+| `is_balanced` | No | bool | Draw a square marker instead of a circle. |
+
+## Heatmap inputs
+
+`plot_heatmap` / `plot_heatmap_cnp` take a reduced matrix, not a DataFrame, plus a bin table.
+
+| Input | Required | Type | Description |
+|---|---|---|---|
+| `matrix` | Yes | ndarray | `(n_rows, n_bins)` values; columns aligned to `coords_df` rows, rows bottom-to-top. |
+| `coords_df` | Yes | DataFrame | The bins: `#CHR`, `START`, `END`, one row per matrix column. |
+| `row_labels` | No | ndarray | `(n_rows,)` label per row; contiguous runs get a boxed y-tick. |
+| `strip_label_map` | No | dict | `{name: (n_rows,) values}` drawn as categorical side strips. |
+| `dist_strip` | No | tuple | `(name, post_matrix, order, color_map, prop_map)` posterior distribution strip; `post_matrix` is `(n_rows, len(order))` rows summing to 1. |

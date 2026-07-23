@@ -9,7 +9,7 @@ import pytest
 
 matplotlib.use("Agg")
 
-from cnplot.cnplot_genome_axis import GenomeAxis
+from cnplot import GenomeAxis
 from simulate import reference as _reference
 from simulate import simulate
 
@@ -51,7 +51,7 @@ def sim2():
 @pytest.fixture
 def state_palette(sim):
     """{state string: color} covering the "state" column, for hue coloring."""
-    from cnplot.cnplot_colormap import get_cn_cmap
+    from cnplot import get_cn_cmap
 
     style, _ = get_cn_cmap()
     out = {}

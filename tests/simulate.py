@@ -305,9 +305,12 @@ def _demo() -> None:
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    from cnplot.cnplot_figures import make_row_spec, plot_scatter_1d_multisample
-    from cnplot.cnplot_genome_axis import GenomeAxis
-    from cnplot.cnplot_intcnp import plot_cnv_profile
+    from cnplot import (
+        GenomeAxis,
+        make_row_spec,
+        plot_cnv_profile,
+        plot_scatter_1d_multisample,
+    )
 
     out = os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".tmp"

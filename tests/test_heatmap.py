@@ -5,9 +5,14 @@ import numpy as np
 import pytest
 from matplotlib.colors import TwoSlopeNorm
 
-from cnplot.cnplot_colormap import build_label_cmaps, get_baf_cmap
-from cnplot.cnplot_figures import plot_heatmap_cnp
-from cnplot.cnplot_heatmap import plot_column_strips, plot_heatmap, plot_strip_legend
+from cnplot import (
+    build_label_cmaps,
+    get_baf_cmap,
+    plot_column_strips,
+    plot_heatmap,
+    plot_heatmap_cnp,
+    plot_strip_legend,
+)
 
 
 def test_heatmap_renders(axis, sim, saved):

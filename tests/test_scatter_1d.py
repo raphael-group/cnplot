@@ -5,9 +5,13 @@ import numpy as np
 import pytest
 from matplotlib.collections import PathCollection
 
-from cnplot.cnplot_1d import _expected_lines, plot_scatter_1d
-from cnplot.cnplot_figures import make_row_spec, plot_scatter_1d_multisample
-from cnplot.cnplot_intcnp import plot_cnv_profile
+from cnplot import (
+    make_row_spec,
+    plot_cnv_profile,
+    plot_scatter_1d,
+    plot_scatter_1d_multisample,
+)
+from cnplot.cnplot_1d import _expected_lines
 
 
 def _scatters(ax):

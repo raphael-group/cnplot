@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from cnplot.cnplot_genome_axis import GapKind
+from cnplot import GapKind
 
 
 def test_chrom_order_follows_sizes(axis):
@@ -64,7 +64,7 @@ def test_grid_covers_axis_end_to_end(axis, sim):
 
 
 def test_excluded_chroms_drop(reference):
-    from cnplot.cnplot_genome_axis import GenomeAxis
+    from cnplot import GenomeAxis
 
     kept = GenomeAxis(*reference, excluded_chroms=["chr21", "chr22"])
     assert "chr21" not in kept.chrs and "chr22" not in kept.chrs

@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 
-from cnplot.cnplot_2d import get_landmarks, plot_scatter_2d
+from cnplot import get_landmarks, plot_scatter_2d
 
 
 def test_landmarks_dedupe_on_state(sim):

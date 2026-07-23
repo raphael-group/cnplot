@@ -3,15 +3,13 @@
 import matplotlib.colors as mcolors
 import numpy as np
 
-from cnplot.cnplot_colormap import (
-    build_label_cmaps,
-    get_baf_cmap,
-    get_cn_cmap,
-)
-from cnplot.cnplot_utils import (
+from cnplot import (
     MARKER_SIZE_LARGE,
     MARKER_SIZE_SMALL,
+    build_label_cmaps,
     format_clone_name,
+    get_baf_cmap,
+    get_cn_cmap,
     resolve_colors,
     resolve_marker_size,
     resolve_ylim,

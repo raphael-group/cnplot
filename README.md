@@ -1,4 +1,6 @@
 # CN-Plot
+`cnplot` is an allele-specific copy-number profile visualization python package implemented based on matplotlib. This package is developed for the purpose of easily and beautifully plotting copy-number profiles as well as read-depth ratio, B-allele frequency (and others) observations across multiple samples with a common reference coordinates with both single-cell and (pseudo-)bulk option.
+
 
 ## Installation
 `Python >=3.10` is required for installation.
@@ -15,30 +17,31 @@ pip install -e ".[dev]"
 ```
 
 ## API Usage
-
-Build a `GenomeAxis` once from a region BED and a chromosome-sizes file, then reuse it
-across every plot:
-
-```python
-from cnplot.cnplot_genome_axis import GenomeAxis
-
-axis = GenomeAxis("regions.bed", "chrom.sizes")
-```
-
-Each plot takes a DataFrame in the `seg.ucn` layout (`#CHR`, `START`, `END`, `cn_<clone>`,
-`u_<clone>`) or per-bin observations, and maps them onto the shared axis by coordinate. See
-the Galleries below for the essential call behind each figure.
+See **[docs/reference.md](docs/reference.md)** for input format descriptions.
 
 ## Galleries
 
 Every figure is produced by [`examples/plot_gallery.py`](examples/plot_gallery.py) from a
 small bundled dataset; the snippets below show the essential call.
 
+### 0. Load the data and build the axis
+
+```python
+import pandas as pd
+from cnplot import GenomeAxis
+
+# built a common axis coordinates from reference genome
+axis = GenomeAxis("regions.bed", "chrom.sizes")
+
+seg_df = pd.read_table("sample.seg.ucn.tsv")   # the copy-number profile
+obs_df = pd.read_table("bins.tsv")             # bin-level RDR / BAF observations
+```
+
 ### 1. Integer copy-number profile
 
 ```python
 import matplotlib.pyplot as plt
-from cnplot.cnplot_intcnp import plot_cnv_profile
+from cnplot import plot_cnv_profile
 
 fig, (ax, ax_leg) = plt.subplots(2, 1, height_ratios=[3, 1])
 plot_cnv_profile(ax, seg_df, axis, sample_id="S1", ax_leg=ax_leg)
@@ -49,7 +52,7 @@ plot_cnv_profile(ax, seg_df, axis, sample_id="S1", ax_leg=ax_leg)
 ### 2. Genome-wide RDR and BAF (multi-sample)
 
 ```python
-from cnplot.cnplot_figures import make_row_spec, plot_scatter_1d_multisample
+from cnplot import make_row_spec, plot_scatter_1d_multisample
 
 rows = [
     make_row_spec("RD", ylabel="RDR", href=1.0),
@@ -66,7 +69,7 @@ fig = plot_scatter_1d_multisample(
 ### 3. RDR vs BAF joint scatter
 
 ```python
-from cnplot.cnplot_2d import plot_scatter_2d
+from cnplot import plot_scatter_2d
 
 grid = plot_scatter_2d(
     obs_df, "BAF", "RD", expected_df=seg_df, group="S1",
@@ -99,7 +102,7 @@ One call draws the mesh, its colorbar, the categorical / posterior side strips, 
 integer-CN profile with its legend. Shown below for RDR and BAF:
 
 ```python
-from cnplot.cnplot_figures import plot_heatmap_cnp
+from cnplot import plot_heatmap_cnp
 
 fig = plot_heatmap_cnp(
     matrix, bins, axis, seg_df, sample_id="S1",
