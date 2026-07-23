@@ -61,10 +61,7 @@ def plot_heatmap(
     cbar_label: str | None = None,
     cbar_ticks=None,
     cbar_frac: float = 0.2,
-    strip_label_map: dict | None = None,
-    cmaps: dict | None = None,
-    dist_strip: tuple | None = None,
-    display_names: dict | None = None,
+    strips: list | None = None,
     show_strip_legend: bool = True,
     legend_x0: float | None = None,
     rasterized: bool = True,
@@ -75,8 +72,8 @@ def plot_heatmap(
     mesh cell, and stretches no bin covers become masked filler so nothing is
     stretched across a gap. Rows are drawn bottom to top, matching ``pcolormesh``.
 
-    When ``strip_label_map`` is given the categorical side strips and their
-    legends are drawn too, so a single call produces the full annotated figure.
+    When ``strips`` is given the side strips and their legends are drawn too, so
+    a single call produces the full annotated figure.
 
     Args:
         ax: Axes to draw on.
@@ -99,14 +96,9 @@ def plot_heatmap(
         cbar_ticks: Explicit colorbar ticks, or None to autoscale.
         cbar_frac: Colorbar height as a fraction of the mesh height, matching
             Copytyping's short bar.
-        strip_label_map: {label name: (n_rows,) values} drawn as color strips left
-            of the heatmap. None draws no strips.
-        cmaps: {label name: {value: color}} for the strips; built from
-            ``strip_label_map`` when None.
-        dist_strip: Optional per-row distribution strip drawn closest to the
-            heatmap, e.g. copy-typing posteriors; see :func:`plot_column_strips`.
-        display_names: Optional {label name: shown title} for the strips and
-            legends.
+        strips: Ordered list of side-strip specs drawn left of the heatmap, the
+            first closest to it; see :func:`plot_column_strips` for the spec
+            format. None draws no strips.
         show_strip_legend: Draw one legend per strip to the right.
         legend_x0: Left edge of the legends in figure fraction; defaults to just
             right of the axes.
@@ -178,31 +170,14 @@ def plot_heatmap(
             cax.set_title(cbar_label, fontsize=10, fontweight="bold", pad=4)
         right = box.x1 + 0.06
 
-    if strip_label_map or dist_strip is not None:
-        strip_label_map = strip_label_map or {}
-        if cmaps is None and strip_label_map:
-            from .cnplot_colormap import build_label_cmaps
-
-            cmaps = build_label_cmaps(
-                strip_label_map, primary_label=next(iter(strip_label_map))
-            )
-        info = plot_column_strips(
-            ax.figure,
-            ax,
-            y_edges,
-            strip_label_map,
-            cmaps or {},
-            display_names=display_names,
-            dist_strip=dist_strip,
-        )
+    if strips:
+        info = plot_column_strips(ax.figure, ax, y_edges, strips)
         if show_strip_legend:
             if legend_x0 is None:
                 ax.figure.canvas.draw()
                 right = right if right is not None else ax.get_position().x1 + 0.02
                 legend_x0 = right
-            plot_strip_legend(
-                ax.figure, ax, info, x0=legend_x0, display_names=display_names
-            )
+            plot_strip_legend(ax.figure, ax, info, x0=legend_x0)
     return x_edges, y_edges, masked
 
 
@@ -248,128 +223,179 @@ def _draw_row_blocks(
 
 
 # =============================================================================
-# Categorical side strips
+# Side strips
 # =============================================================================
+
+
+def _resolve_strips(strips: list) -> list:
+    """Fill spec defaults: categorical cmaps and display names.
+
+    Categorical strips missing a ``cmap`` are colored together through
+    :func:`~cnplot.cnplot_colormap.get_multiclass_cmap` so shared values agree
+    across strips; the first such strip is the primary.
+
+    Args:
+        strips: The strip specs, each a categorical (``values``) or distribution
+            (``matrix``) dict.
+
+    Returns:
+        Shallow copies of ``strips`` with ``cmap`` and ``display_name`` set.
+    """
+    strips = [dict(s) for s in strips]
+    missing = {
+        s["name"]: s["values"]
+        for s in strips
+        if "matrix" not in s and s.get("cmap") is None
+    }
+    if missing:
+        from .cnplot_colormap import get_multiclass_cmap
+
+        built = get_multiclass_cmap(missing, primary_label=next(iter(missing)))
+        for s in strips:
+            if s["name"] in missing:
+                s["cmap"] = built[s["name"]]
+    for s in strips:
+        s.setdefault("display_name", s["name"])
+    return strips
+
+
+def _draw_dist_strip(ax: plt.Axes, spec: dict, y_edges: np.ndarray) -> tuple:
+    """Stack each row's distribution into a horizontal bar.
+
+    Instead of a solid color per row, a distribution strip (e.g. copy-typing
+    posteriors) shows assignment confidence rather than just the hard call.
+
+    Args:
+        ax: Strip axes to draw on.
+        spec: Distribution spec with ``matrix`` (n_rows, len(order)), ``order``,
+            ``cmap`` {category: color}, and optional ``props`` {category:
+            fraction} for the legend.
+        y_edges: Row edges from :func:`plot_heatmap`.
+
+    Returns:
+        (display_name, {category: color}, {category: fraction}) for the legend.
+    """
+    matrix = np.asarray(spec["matrix"])
+    order = spec["order"]
+    colors = spec["cmap"]
+    y_centers = 0.5 * (y_edges[:-1] + y_edges[1:])
+    heights = np.diff(y_edges)
+    left = np.zeros(len(y_centers))
+    for k, val in enumerate(order):
+        w = matrix[:, k]
+        ax.barh(
+            y_centers,
+            w,
+            left=left,
+            height=heights,
+            color=colors[val],
+            edgecolor="none",
+            align="center",
+            rasterized=True,
+        )
+        left = left + w
+    ax.set_xlim(0.0, 1.0)
+    props = spec.get("props") or dict.fromkeys(order, 0.0)
+    return spec["display_name"], {v: colors[v] for v in order}, props
+
+
+def _draw_cat_strip(ax: plt.Axes, spec: dict, y_edges: np.ndarray) -> tuple:
+    """Draw a solid color per row from the row's categorical value.
+
+    Args:
+        ax: Strip axes to draw on.
+        spec: Categorical spec with ``values`` (n_rows,) and ``cmap`` {value:
+            color}.
+        y_edges: Row edges from :func:`plot_heatmap`.
+
+    Returns:
+        (display_name, {value: color}, {value: fraction}) for the legend, where
+        fraction is each value's share of rows.
+    """
+    values = np.array([str(v) for v in spec["values"]])
+    n_rows = max(len(values), 1)
+    color_dict = spec["cmap"]
+    order = list(color_dict)
+    prop_dict = {v: int((values == v).sum()) / n_rows for v in color_dict}
+    codes = np.array([order.index(v) for v in values], dtype=float)[:, None]
+    strip_cmap = mcolors.ListedColormap([color_dict[v] for v in order])
+    strip_norm = mcolors.BoundaryNorm(np.arange(len(order) + 1) - 0.5, strip_cmap.N)
+    ax.pcolormesh(
+        np.array([0.0, 1.0]),
+        y_edges,
+        codes,
+        cmap=strip_cmap,
+        norm=strip_norm,
+        shading="flat",
+        rasterized=True,
+    )
+    return spec["display_name"], color_dict, prop_dict
+
+
+def _finish_strip_axis(ax: plt.Axes, label: str, base_ax: plt.Axes) -> None:
+    """Title a strip along its top and align it to the heatmap rows.
+
+    Args:
+        ax: Strip axes to finish.
+        label: Text written vertically above the strip.
+        base_ax: Heatmap axes whose y-limits the strip matches.
+    """
+    ax.set_xticks([0.5])
+    ax.set_xticklabels([label], rotation=90, fontsize=11, fontweight="bold")
+    ax.tick_params(axis="x", labeltop=True, labelbottom=False, top=False, bottom=False)
+    ax.set_yticks([])
+    ax.set_ylim(base_ax.get_ylim())
 
 
 def plot_column_strips(
     fig: plt.Figure,
     base_ax: plt.Axes,
     y_edges: np.ndarray,
-    row_label_map: dict,
-    cmaps: dict,
+    strips: list,
     strip_width: float = 0.012,
     gap: float = 0.004,
-    display_names: dict | None = None,
-    dist_strip: tuple | None = None,
 ) -> list:
-    """Draw vertical categorical color strips left of ``base_ax``.
+    """Draw vertical annotation strips left of ``base_ax``, in list order.
 
-    One strip per entry in ``row_label_map``, each a column of colored cells
-    aligned to the heatmap rows, so a row's category reads off beside it.
+    Each entry of ``strips`` is one strip, drawn outward from the heatmap in the
+    given order (the first is closest). A spec is one of two kinds, told apart by
+    its keys:
 
-    A ``dist_strip`` is drawn first, closest to the heatmap: instead of a solid
-    color per row it stacks each row's per-clone distribution (e.g. copy-typing
-    posteriors) into a horizontal bar, so assignment confidence is visible rather
-    than just the hard call.
+    - categorical: ``{"name", "values": (n_rows,), "cmap"?, "display_name"?}`` -
+      a solid color per row from the row's value. ``cmap`` may be omitted to
+      auto-color; see :func:`_resolve_strips`.
+    - distribution: ``{"name", "matrix": (n_rows, k), "order": [k cats], "cmap",
+      "props"?, "display_name"?}`` - each row's distribution stacked into a bar,
+      e.g. copy-typing posteriors.
 
     Args:
         fig: Figure holding ``base_ax``; strips are added as new axes.
         base_ax: Heatmap axes the strips align to.
         y_edges: Row edges from :func:`plot_heatmap`.
-        row_label_map: {label name: (n_rows,) values}, bottom to top.
-        cmaps: {label name: {value: color}}.
+        strips: Ordered list of strip specs, the first closest to the heatmap.
         strip_width: Strip width in figure fraction.
         gap: Space between strips in figure fraction.
-        display_names: Optional {label name: shown title}; the name is used as-is
-            when absent.
-        dist_strip: Optional ``(name, post_matrix, order, color_dict, prop_dict)``
-            distribution strip. ``post_matrix`` is (n_rows, len(order)) rows
-            summing to 1; ``color_dict`` maps each ``order`` entry to a color;
-            ``prop_dict`` gives each entry's share for its legend.
 
     Returns:
-        [(name, {value: color}, {value: fraction})] per strip, the distribution
-        strip first when present, for :func:`plot_strip_legend`; fraction is each
-        value's share of rows.
+        [(display_name, {value: color}, {value: fraction})] per strip, in the same
+        order, for :func:`plot_strip_legend`.
     """
-    display_names = display_names or {}
+    strips = _resolve_strips(strips)
     fig.canvas.draw()
     bbox = base_ax.get_position()
     x_cursor = bbox.x0 - gap
 
-    dist_legend = None
-    if dist_strip is not None:
-        name, post_matrix, order, color_dict, prop_dict = dist_strip
-        x_cursor -= strip_width
-        ax = fig.add_axes([x_cursor, bbox.y0, strip_width, bbox.height])
-        y_centers = 0.5 * (y_edges[:-1] + y_edges[1:])
-        heights = np.diff(y_edges)
-        left = np.zeros(len(y_centers))
-        for k, val in enumerate(order):
-            w = np.asarray(post_matrix)[:, k]
-            ax.barh(
-                y_centers,
-                w,
-                left=left,
-                height=heights,
-                color=color_dict[val],
-                edgecolor="none",
-                align="center",
-                rasterized=True,
-            )
-            left = left + w
-        ax.set_xlim(0.0, 1.0)
-        ax.set_xticks([0.5])
-        ax.set_xticklabels(
-            [display_names.get(name, name)],
-            rotation=90,
-            fontsize=11,
-            fontweight="bold",
-        )
-        ax.tick_params(
-            axis="x", labeltop=True, labelbottom=False, top=False, bottom=False
-        )
-        ax.set_yticks([])
-        ax.set_ylim(base_ax.get_ylim())
-        x_cursor -= gap
-        dist_legend = (name, {v: color_dict[v] for v in order}, prop_dict)
-
     legends_info = []
-    for name, values in row_label_map.items():
-        values = np.array([str(v) for v in values])
-        n_rows = max(len(values), 1)
-        color_dict = cmaps[name]
-        order = list(color_dict)
-        prop_dict = {v: int((values == v).sum()) / n_rows for v in color_dict}
-        codes = np.array([order.index(v) for v in values], dtype=float)[:, None]
-
+    for spec in strips:
         x_cursor -= strip_width
         ax = fig.add_axes([x_cursor, bbox.y0, strip_width, bbox.height])
-        strip_cmap = mcolors.ListedColormap([color_dict[v] for v in order])
-        strip_norm = mcolors.BoundaryNorm(np.arange(len(order) + 1) - 0.5, strip_cmap.N)
-        ax.pcolormesh(
-            np.array([0.0, 1.0]),
-            y_edges,
-            codes,
-            cmap=strip_cmap,
-            norm=strip_norm,
-            shading="flat",
-            rasterized=True,
-        )
-        ax.set_xticks([0.5])
-        ax.set_xticklabels(
-            [display_names.get(name, name)], rotation=90, fontsize=11, fontweight="bold"
-        )
-        ax.tick_params(
-            axis="x", labeltop=True, labelbottom=False, top=False, bottom=False
-        )
-        ax.set_yticks([])
-        ax.set_ylim(base_ax.get_ylim())
+        if "matrix" in spec:
+            legend = _draw_dist_strip(ax, spec, y_edges)
+        else:
+            legend = _draw_cat_strip(ax, spec, y_edges)
+        _finish_strip_axis(ax, spec["display_name"], base_ax)
         x_cursor -= gap
-        legends_info.append((name, color_dict, prop_dict))
-    if dist_legend is not None:
-        legends_info = [dist_legend] + legends_info
+        legends_info.append(legend)
     return legends_info
 
 
@@ -380,7 +406,6 @@ def plot_strip_legend(
     x0: float,
     entry_h: float = 0.038,
     gap: float = 0.06,
-    display_names: dict | None = None,
 ) -> float:
     """Stack one categorical legend per strip, top-aligned, at figure-x ``x0``.
 
@@ -391,12 +416,10 @@ def plot_strip_legend(
         x0: Left edge of the legends, in figure fraction.
         entry_h: Height of one legend entry, in figure fraction.
         gap: Space between legends, in figure fraction.
-        display_names: Optional {label name: shown title}.
 
     Returns:
         The y of the last legend's bottom, for anything stacked below.
     """
-    display_names = display_names or {}
     fig.canvas.draw()
     bbox = base_ax.get_position()
     y_top = bbox.y1
@@ -407,7 +430,7 @@ def plot_strip_legend(
         ]
         leg = fig.legend(
             handles=handles,
-            title=display_names.get(name, name),
+            title=name,
             loc="upper left",
             bbox_to_anchor=(x0, y_top),
             frameon=False,

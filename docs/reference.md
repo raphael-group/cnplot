@@ -23,7 +23,7 @@ Headerless, whitespace-separated file. Read by `GenomeAxis`.
 | chromosome | Yes | str | Chromosome name. Row order sets the axis chromosome order. |
 | length | Yes | int | Chromosome length. |
 
-## `seg_df` (seg.ucn profile)
+## `seg_df` (HATCHet-style seg.ucn profile)
 
 Integer copy-number profile, one row per segment. Consumed by `plot_cnv_profile` and, in the
 2D form below, by `plot_scatter_2d`.
@@ -32,22 +32,22 @@ Integer copy-number profile, one row per segment. Consumed by `plot_cnv_profile`
 |---|---|---|---|
 | `SAMPLE` | For multi-sample | str | Sample id; needed only when the table stacks several samples (select with `sample_id=`). |
 | `#CHR` | Yes | str | Chromosome. |
-| `START` | Yes | int | Segment start. |
-| `END` | Yes | int | Segment end. |
+| `START` | Yes | int | Start coordinate (0-indexed, inclusive). |
+| `END` | Yes | int | End coordinate (exclusive). |
 | `cn_(\w+)` | Yes (>= 1) | str | Per-clone allele copy number as `"a\|b"`, one column per clone (`cn_normal`, `cn_clone1`, ...). |
 | `u_(\w+)` | No | float | Per-clone proportion in `[0, 1]`; drives the proportion legend. Constant down the column. |
 | `PI_VIOL` | No | bool | Per-segment pure-integer-violation flag; drawn as a red/green overlay. Matched case-insensitively. |
 
-## `obs_df` (per-bin observations)
+## `obs_df` (Bin-level observations)
 
-Per-bin values for the scatter plots. Consumed by `plot_scatter_1d` /
+Bin-level observations. Consumed by `plot_scatter_1d` /
 `plot_scatter_1d_multisample` (`ycol`) and `plot_scatter_2d` (`xcol`, `ycol`).
 
 | Column | Required | Type | Description |
 |---|---|---|---|
 | `#CHR` | Yes | str | Chromosome. |
-| `START` | Yes | int | Bin start. |
-| `END` | Yes | int | Bin end. |
+| `START` | Yes | int | Start coordinate (0-indexed, inclusive). |
+| `END` | Yes | int | End coordinate (exclusive). |
 | group | For multi-sample | str | Group / sample id; column name set by `group_col=` (default `SAMPLE`). |
 | value | Yes (>= 1) | float | The plotted quantity, named freely and passed as `ycol` / `xcol` (e.g. `RD`, `BAF`, `FCN-A`). Used as given - no scaling or log. |
 | hue | No | any | Categorical column to color points by, named via `hue=` (e.g. `cnp` holding the joint `"a\|b;a\|b"` state). |
@@ -61,8 +61,8 @@ than `obs_df` - it maps through the same axis.
 | Column | Required | Type | Description |
 |---|---|---|---|
 | `#CHR` | Yes | str | Chromosome. |
-| `START` | Yes | int | Segment/bin start. |
-| `END` | Yes | int | Segment/bin end. |
+| `START` | Yes | int | Start coordinate (0-indexed, inclusive). |
+| `END` | Yes | int | End coordinate (exclusive). |
 | `exp_(\w+)_(\w+)` | Yes | float | Expected value, one `exp_<value>_<group>` column per value per group (e.g. `exp_RD_S1`). A missing column simply draws no overlay for that group. |
 
 ## `expected_df` (2D landmarks)
@@ -73,7 +73,7 @@ landmark coordinates.
 | Column | Required | Type | Description |
 |---|---|---|---|
 | `SAMPLE` | For multi-sample | str | Group id; selected with `group=`. |
-| `#CHR`, `START`, `END` | No | str/int | Provenance only; landmarks key on CN state, not position. |
+| `#CHR`, `START`, `END` | No | str/int | Provenance only; |
 | `cn_(\w+)` | Yes | str | Per-clone `"a\|b"` CN, one column per clone; sets each landmark's `(a, b)` label and dedup key. |
 | `u_(\w+)` | No | float | Per-clone proportion; drives the proportion legend. |
 | `exp_<xcol>` | Yes | float | Landmark x coordinate (matches the observed `xcol`). |
@@ -90,5 +90,21 @@ landmark coordinates.
 | `matrix` | Yes | ndarray | `(n_rows, n_bins)` values; columns aligned to `coords_df` rows, rows bottom-to-top. |
 | `coords_df` | Yes | DataFrame | The bins: `#CHR`, `START`, `END`, one row per matrix column. |
 | `row_labels` | No | ndarray | `(n_rows,)` label per row; contiguous runs get a boxed y-tick. |
-| `strip_label_map` | No | dict | `{name: (n_rows,) values}` drawn as categorical side strips. |
-| `dist_strip` | No | tuple | `(name, post_matrix, order, color_map, prop_map)` posterior distribution strip; `post_matrix` is `(n_rows, len(order))` rows summing to 1. |
+| `strips` | No | list[dict] | Ordered annotation strips left of the heatmap, the first closest to it. Each dict is one of the two strip specs below. |
+
+### Strip specs (entries of `strips`)
+
+A categorical strip colors each row by its value; a distribution strip stacks each
+row's distribution (e.g. copy-typing posteriors) into a bar. The kind is told apart
+by the keys: `values` marks categorical, `matrix` marks distribution.
+
+| Key | Kind | Required | Type | Description |
+|---|---|---|---|---|
+| `name` | both | Yes | str | Strip key; also the default legend title and shared-palette identity. |
+| `display_name` | both | No | str | Title shown on the strip and legend; defaults to `name`. |
+| `values` | categorical | Yes | ndarray | `(n_rows,)` value per row. |
+| `cmap` | categorical | No | dict | `{value: color}`; auto-built (shared across strips) when omitted. |
+| `matrix` | distribution | Yes | ndarray | `(n_rows, len(order))` per-row distribution, rows summing to 1. |
+| `order` | distribution | Yes | list | Column order of `matrix`, i.e. the stacked categories. |
+| `cmap` | distribution | Yes | dict | `{category: color}` for the stacked bars. |
+| `props` | distribution | No | dict | `{category: fraction}` for the strip's legend. |

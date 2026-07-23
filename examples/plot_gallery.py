@@ -21,16 +21,16 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.colors import TwoSlopeNorm
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "tests"))
 
 from cnplot import (  # noqa: E402
     GenomeAxis,
-    build_label_cmaps,
-    build_mixture_cn_cmap,
     get_baf_cmap,
+    get_log2rdr_cmap,
+    get_mixcn_cmap,
+    get_multiclass_cmap,
     make_row_spec,
     plot_cnv_profile,
     plot_heatmap_cnp,
@@ -51,31 +51,31 @@ def suptitle(fig, text, y=1.0):
     fig.suptitle(text, fontsize=14, fontweight="bold", y=y)
 
 
-axis = GenomeAxis(*reference())
+genome_axis = GenomeAxis(*reference())
 sim = simulate(seed=0, samples=["S1", "S2"])
 
 # color scatter points by the joint CNP, so a subclonal segment stays distinct
 # from a clonal one at the same total copy number
-palette = build_mixture_cn_cmap(
+palette = get_mixcn_cmap(
     list(sim.obs["cnp"].unique()),
     [float(sim.seg_ucn[f"u_{c}"].iloc[0]) for c in sim.clones],
 )
 
 # 1. integer copy-number profile
 fig, (ax, lg) = plt.subplots(2, 1, figsize=(12, 3), height_ratios=[3, 1])
-plot_cnv_profile(ax, sim.seg_ucn, axis, sample_id="S1", ax_leg=lg)
+plot_cnv_profile(ax, sim.seg_ucn, genome_axis, sample_id="S1", ax_leg=lg)
 suptitle(fig, "Integer copy-number profile", y=1.18)
 save(fig, "profile")
 
 # 2. genome-wide RDR + BAF, multi-sample, over the shared profile
-rows = [
+row_specs = [
     make_row_spec("RD", ylabel="RDR", ylim=(0, 3), href=1.0),
     make_row_spec("BAF", ylabel="mhBAF", ylim=(-0.05, 1.05), href=0.5),
 ]
 fig = plot_scatter_1d_multisample(
     sim.obs,
-    axis,
-    rows,
+    genome_axis,
+    row_specs,
     expected_df=sim.expected_1d,
     hue="cnp",
     palette=palette,
@@ -116,7 +116,7 @@ rows_ab = [
 ]
 fig = plot_scatter_1d_multisample(
     obs_ab,
-    axis,
+    genome_axis,
     rows_ab,
     expected_df=exp_ab,
     hue="cnp",
@@ -128,7 +128,7 @@ save(fig, "fcn_ab")
 
 # 5 & 6. single-cell heatmap page: mesh + colorbar + strips + CN profile + legend
 celltype = np.where(sim.heatmap_labels == "normal", "normal", "tumor")
-clone_cmap = build_label_cmaps({"clone": sim.heatmap_labels}, "clone")["clone"]
+clone_cmap = get_multiclass_cmap({"clone": sim.heatmap_labels}, "clone")["clone"]
 order = list(clone_cmap)
 rng = np.random.default_rng(1)
 post = np.zeros((len(sim.heatmap_labels), len(order)))
@@ -137,33 +137,28 @@ for i, lab in enumerate(sim.heatmap_labels):
     p[order.index(lab)] += 2.0
     post[i] = p / p.sum()
 post_prop = {v: float((sim.heatmap_labels == v).mean()) for v in order}
-dist_strip = ("Copy-typing", post, order, clone_cmap, post_prop)
-strips = {"cell_type": celltype}
-names = {"cell_type": "Cell-type", "Copy-typing": "Copy-typing"}
-baf_cmap, baf_norm = get_baf_cmap()
+# posterior distribution strip closest to the heatmap, then a categorical strip
+strips = [
+    {
+        "name": "Copy-typing",
+        "matrix": post,
+        "order": order,
+        "cmap": clone_cmap,
+        "props": post_prop,
+    },
+    {"name": "cell_type", "values": celltype, "display_name": "Cell-type"},
+]
+rdr_cmap, rdr_norm, rdr_ticks = get_log2rdr_cmap()
+baf_cmap, baf_norm, baf_ticks = get_baf_cmap()
 
 for matrix, cmap, norm, label, ticks, out in [
-    (
-        sim.heatmap_rdr,
-        "coolwarm",
-        TwoSlopeNorm(vmin=-1, vcenter=0, vmax=1),
-        "RDR",
-        [-1, -0.5, 0, 0.5, 1],
-        "heatmap_rdr",
-    ),
-    (
-        sim.heatmap_baf,
-        baf_cmap,
-        baf_norm,
-        "BAF",
-        [0, 0.25, 0.5, 0.75, 1],
-        "heatmap_baf",
-    ),
+    (sim.heatmap_rdr, rdr_cmap, rdr_norm, "RDR", rdr_ticks, "heatmap_rdr"),
+    (sim.heatmap_baf, baf_cmap, baf_norm, "BAF", baf_ticks, "heatmap_baf"),
 ]:
     fig = plot_heatmap_cnp(
         matrix,
         sim.bins,
-        axis,
+        genome_axis,
         sim.seg_ucn,
         sample_id="S1",
         title=f"Single-cell copy-number heatmap ({label})",
@@ -172,8 +167,6 @@ for matrix, cmap, norm, label, ticks, out in [
         norm=norm,
         cbar_label=label,
         cbar_ticks=ticks,
-        strip_label_map=strips,
-        dist_strip=dist_strip,
-        display_names=names,
+        strips=strips,
     )
     save(fig, out)

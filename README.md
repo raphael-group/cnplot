@@ -28,13 +28,17 @@ small bundled dataset; the snippets below show the essential call.
 
 ```python
 import pandas as pd
-from cnplot import GenomeAxis
+from cnplot import GenomeAxis, get_mixcn_cmap
 
-# built a common axis coordinates from reference genome
-axis = GenomeAxis("regions.bed", "chrom.sizes")
+# build a common coordinate axis from the reference genome
+genome_axis = GenomeAxis("regions.bed", "chrom.sizes")
 
 seg_df = pd.read_table("sample.seg.ucn.tsv")   # the copy-number profile
 obs_df = pd.read_table("bins.tsv")             # bin-level RDR / BAF observations
+
+# color points by the joint CNP, so a subclonal segment stays distinct from a
+# clonal one at the same total copy number
+palette = get_mixcn_cmap(obs_df["cnp"].unique())
 ```
 
 ### 1. Integer copy-number profile
@@ -43,8 +47,8 @@ obs_df = pd.read_table("bins.tsv")             # bin-level RDR / BAF observation
 import matplotlib.pyplot as plt
 from cnplot import plot_cnv_profile
 
-fig, (ax, ax_leg) = plt.subplots(2, 1, height_ratios=[3, 1])
-plot_cnv_profile(ax, seg_df, axis, sample_id="S1", ax_leg=ax_leg)
+fig, (ax, ax_leg) = plt.subplots(2, 1, figsize=(12, 3), height_ratios=[3, 1])
+plot_cnv_profile(ax, seg_df, genome_axis, sample_id="S1", ax_leg=ax_leg)
 ```
 
 ![profile](examples/profile.png)
@@ -55,11 +59,11 @@ plot_cnv_profile(ax, seg_df, axis, sample_id="S1", ax_leg=ax_leg)
 from cnplot import make_row_spec, plot_scatter_1d_multisample
 
 rows = [
-    make_row_spec("RD", ylabel="RDR", href=1.0),
-    make_row_spec("BAF", ylabel="mhBAF", href=0.5),
+    make_row_spec("RD", ylabel="RDR", ylim=(0, 3), href=1.0),
+    make_row_spec("BAF", ylabel="mhBAF", ylim=(-0.05, 1.05), href=0.5),
 ]
 fig = plot_scatter_1d_multisample(
-    obs_df, axis, rows, expected_df=expected_df,
+    obs_df, genome_axis, rows, expected_df=expected_1d,
     hue="cnp", palette=palette, seg_df=seg_df,
 )
 ```
@@ -72,8 +76,9 @@ fig = plot_scatter_1d_multisample(
 from cnplot import plot_scatter_2d
 
 grid = plot_scatter_2d(
-    obs_df, "BAF", "RD", expected_df=seg_df, group="S1",
+    obs_df, "BAF", "RD", expected_df=expected_2d, group="S1",
     hue="cnp", palette=palette,
+    xlim=(0, 1), ylim=(0, 3), xlabel="mhBAF", ylabel="RDR",
 )
 ```
 
@@ -81,15 +86,18 @@ grid = plot_scatter_2d(
 
 ### 4. Allele-specific fractional copy number (FCN-A / FCN-B)
 
-The minor allele (FCN-B) is mirrored below the major (FCN-A) with `reverse_y=True`:
+Derive the major/minor fractional copy numbers, then mirror the minor allele (FCN-B)
+below the major (FCN-A) with `reverse_y=True`:
 
 ```python
+obs_df["FCN-A"] = 2 * obs_df["RD"] * (1 - obs_df["BAF"])
+obs_df["FCN-B"] = 2 * obs_df["RD"] * obs_df["BAF"]
 rows = [
-    make_row_spec("FCN-A", href=1.0),
-    make_row_spec("FCN-B", href=1.0, reverse_y=True),
+    make_row_spec("FCN-A", ylabel="FCN-A", ylim=(0, 3.5), href=1.0),
+    make_row_spec("FCN-B", ylabel="FCN-B", ylim=(0, 3.5), href=1.0, reverse_y=True),
 ]
 fig = plot_scatter_1d_multisample(
-    obs_df, axis, rows, expected_df=expected_df,
+    obs_df, genome_axis, rows, expected_df=expected_ab,
     hue="cnp", palette=palette, seg_df=seg_df,
 )
 ```
@@ -102,13 +110,19 @@ One call draws the mesh, its colorbar, the categorical / posterior side strips, 
 integer-CN profile with its legend. Shown below for RDR and BAF:
 
 ```python
-from cnplot import plot_heatmap_cnp
+from cnplot import get_log2rdr_cmap, plot_heatmap_cnp
 
+cmap, norm, ticks = get_log2rdr_cmap()   # or get_baf_cmap() for BAF
 fig = plot_heatmap_cnp(
-    matrix, bins, axis, seg_df, sample_id="S1",
-    row_labels=cell_labels, cmap="coolwarm", norm=norm,
-    cbar_label="RDR", strip_label_map={"cell_type": celltype},
-    dist_strip=("Copy-typing", posteriors, clones, clone_cmap, props),
+    matrix, bins, genome_axis, seg_df, sample_id="S1",
+    row_labels=cell_labels, cmap=cmap, norm=norm,
+    cbar_label="RDR", cbar_ticks=ticks,
+    strips=[
+        # posterior distribution strip, then a categorical strip
+        {"name": "Copy-typing", "matrix": posteriors, "order": clones,
+         "cmap": clone_cmap, "props": props},
+        {"name": "cell_type", "values": celltype, "display_name": "Cell-type"},
+    ],
 )
 ```
 

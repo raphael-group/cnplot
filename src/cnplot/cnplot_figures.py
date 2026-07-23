@@ -364,8 +364,8 @@ def plot_heatmap_cnp(
     carries chromosome names, so the profile is drawn without them.
 
     Everything that shapes the mesh - the row-reduced ``matrix``, its ``cmap`` /
-    ``norm``, the strips and posterior ``dist_strip`` - is a ``plot_heatmap``
-    argument passed straight through; building those inputs stays with the caller.
+    ``norm``, and the ``strips`` - is a ``plot_heatmap`` argument passed straight
+    through; building those inputs stays with the caller.
 
     Args:
         matrix: (n_rows, n_bins) values, columns aligned to ``coords_df`` rows.

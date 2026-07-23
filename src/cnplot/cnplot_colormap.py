@@ -5,13 +5,12 @@ Three independent palettes:
 - joint CN states (a, b) -> :func:`get_cn_cmap`, shared by profiles, legends,
   and scatter points so all three agree.
 - per-allele CN -> :func:`get_ascn_cmap`, a sequential ramp for A/B panels.
-- categorical labels -> :func:`build_label_cmaps`, which colors several
+- categorical labels -> :func:`get_multiclass_cmap`, which colors several
   annotation strips from one shared palette and keeps "normal" and missing
   labels neutral.
 
-Functions taking ``invalid_labels`` or ``na_labels`` default to the module
-constants but accept caller-supplied sets, since what counts as "missing" belongs
-to the caller's data.
+Functions taking ``na_labels`` default to :data:`NA_LABELS` but accept a
+caller-supplied set, since what counts as "missing" belongs to the caller's data.
 """
 
 import re
@@ -25,17 +24,17 @@ __all__ = [
     "BAF_COLORS",
     "CELLTYPE_CMAP",
     "DATASET_CMAP",
-    "INVALID_LABELS",
-    "NA_CELLTYPE",
     "NA_COLOR",
+    "NA_LABELS",
     "NORMAL_COLOR",
     "POSTERIOR_CMAP",
     "PURITY_CMAP",
-    "build_mixture_cn_cmap",
-    "build_label_cmaps",
     "get_ascn_cmap",
-    "get_cn_cmap",
     "get_baf_cmap",
+    "get_cn_cmap",
+    "get_log2rdr_cmap",
+    "get_mixcn_cmap",
+    "get_multiclass_cmap",
     "set_palette",
 ]
 
@@ -47,8 +46,7 @@ __all__ = [
 NORMAL_COLOR = "lightgray"
 NA_COLOR = "darkgray"
 
-INVALID_LABELS = frozenset({"Doublet", "doublet", "Unknown", "NA"})
-NA_CELLTYPE = frozenset({"Unknown", "NA"})
+NA_LABELS = frozenset({"Doublet", "doublet", "Unknown", "NA"})
 
 PURITY_CMAP = "magma_r"
 POSTERIOR_CMAP = "viridis"
@@ -213,42 +211,37 @@ def _is_normal_like(label: str) -> bool:
     return str(label).lower().startswith("normal")
 
 
-def _is_colored_label(label: str, invalid_labels, na_labels) -> bool:
+def _is_colored_label(label: str, na_labels) -> bool:
     """Test whether a label consumes a palette slot.
 
     Args:
         label: Label to test.
-        invalid_labels: Labels treated as invalid.
         na_labels: Labels treated as missing.
 
     Returns:
-        True unless the label is normal-like, invalid, or missing, all of which
-        take fixed grays instead.
+        True unless the label is normal-like or missing, both of which take fixed
+        grays instead.
     """
-    return (
-        label not in invalid_labels
-        and label not in na_labels
-        and not _is_normal_like(label)
-    )
+    return label not in na_labels and not _is_normal_like(label)
 
 
-def _clone_order_key(label: str, invalid_labels) -> tuple:
+def _clone_order_key(label: str, na_labels) -> tuple:
     """Build a sort key ordering clone labels for legends.
 
     Args:
         label: Label to order.
-        invalid_labels: Labels treated as invalid.
+        na_labels: Labels treated as missing.
 
     Returns:
         Sort key placing normal first, then clone1, clone2, ... numerically,
-        then other labels alphabetically, then invalid labels last.
+        then other labels alphabetically, then missing labels last.
     """
     if label == "normal":
         return (0, 0, "")
     m = re.match(r"clone(\d+)$", label)
     if m:
         return (1, int(m.group(1)), "")
-    if label in invalid_labels:
+    if label in na_labels:
         return (3, 0, label)
     return (2, 0, label)
 
@@ -305,12 +298,12 @@ def get_ascn_cmap() -> tuple:
     return state_style, tcn_states
 
 
-def build_mixture_cn_cmap(
+def get_mixcn_cmap(
     clone_states,
     clone_props=None,
     display_min_clone_prop: float | None = None,
 ) -> dict:
-    """Map each joint-clone CNP string to a scatter color.
+    """Map each joint-clone mixture CNP string to a scatter color.
 
     States where every visible tumor clone shares one (a, b) take that state's
     integer-CN color, so points match the profile and legend. Subclonal states
@@ -374,12 +367,33 @@ def get_baf_cmap() -> tuple:
     white.
 
     Returns:
-        Tuple of (cmap, norm) ready to pass to ``imshow`` or ``pcolormesh``.
+        (cmap, norm, ticks): the colormap, its ``BoundaryNorm``, and the
+        recommended colorbar ticks, ready to pass to ``pcolormesh`` and the
+        colorbar.
     """
     cmap = mcolors.ListedColormap(BAF_COLORS, name="baf_disc")
     cmap.set_bad("white")
     norm = mcolors.BoundaryNorm(np.linspace(0, 1, 11), cmap.N, clip=True)
-    return cmap, norm
+    ticks = [0.0, 0.25, 0.5, 0.75, 1.0]
+    return cmap, norm, ticks
+
+
+def get_log2rdr_cmap() -> tuple:
+    """Build the continuous diverging log2 read-depth-ratio colormap.
+
+    Coolwarm centered at 0 over [-1, 1]: blue loss, white neutral, red gain. NaN
+    is white. Mirrors Copytyping's log2RDR heatmap coloring.
+
+    Returns:
+        (cmap, norm, ticks): the colormap, a ``TwoSlopeNorm`` centered at 0, and
+        the recommended colorbar ticks, ready to pass to ``pcolormesh`` and the
+        colorbar.
+    """
+    cmap = plt.get_cmap("coolwarm").copy()
+    cmap.set_bad("white")
+    norm = mcolors.TwoSlopeNorm(vmin=-1, vcenter=0, vmax=1)
+    ticks = [-1.0, -0.5, 0.0, 0.5, 1.0]
+    return cmap, norm, ticks
 
 
 # =============================================================================
@@ -387,11 +401,10 @@ def get_baf_cmap() -> tuple:
 # =============================================================================
 
 
-def build_label_cmaps(
+def get_multiclass_cmap(
     row_label_map: dict,
     primary_label: str | None,
-    invalid_labels=INVALID_LABELS,
-    na_labels=NA_CELLTYPE,
+    na_labels=NA_LABELS,
 ) -> dict:
     """Build color maps for several label sets that share one palette.
 
@@ -403,8 +416,7 @@ def build_label_cmaps(
         row_label_map: {label_name: values} for each annotation to color.
         primary_label: Name of the label set that gets first pick, usually the
             clone assignment. None or an unknown name simply skips the priority.
-        invalid_labels: Labels drawn in the missing-data gray.
-        na_labels: Labels treated as missing.
+        na_labels: Labels drawn in the missing-data gray and sorted last.
 
     Returns:
         {label_name: {value: color}}, one entry per key of ``row_label_map``.
@@ -425,7 +437,7 @@ def build_label_cmaps(
         """
         uniq = {str(v) for v in row_label_map[name]}
         if name == primary_label:
-            return sorted(uniq, key=lambda c: _clone_order_key(c, invalid_labels))
+            return sorted(uniq, key=lambda c: _clone_order_key(c, na_labels))
         return sorted(uniq)
 
     # first encounter in visit order fixes a value's color
@@ -433,7 +445,7 @@ def build_label_cmaps(
     seen = set()
     for name in names:
         for c in cats_for(name):
-            if _is_colored_label(c, invalid_labels, na_labels) and c not in seen:
+            if _is_colored_label(c, na_labels) and c not in seen:
                 seen.add(c)
                 ordered_values.append(c)
 
@@ -446,7 +458,7 @@ def build_label_cmaps(
     for name in names:
         cmap = {}
         for c in cats_for(name):
-            if c in invalid_labels or c in na_labels:
+            if c in na_labels:
                 cmap[c] = NA_COLOR
             elif _is_normal_like(c):
                 cmap[c] = NORMAL_COLOR

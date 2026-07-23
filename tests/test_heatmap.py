@@ -6,7 +6,6 @@ import pytest
 from matplotlib.colors import TwoSlopeNorm
 
 from cnplot import (
-    build_label_cmaps,
     get_baf_cmap,
     plot_column_strips,
     plot_heatmap,
@@ -16,7 +15,7 @@ from cnplot import (
 
 
 def test_heatmap_renders(axis, sim, saved):
-    cmap, norm = get_baf_cmap()
+    cmap, norm, _ = get_baf_cmap()
     fig, ax = plt.subplots(figsize=(12, 4))
     x_edges, y_edges, C = plot_heatmap(
         ax,
@@ -34,7 +33,7 @@ def test_heatmap_renders(axis, sim, saved):
 
 
 def test_filler_columns_are_masked(axis, sim):
-    cmap, norm = get_baf_cmap()
+    cmap, norm, _ = get_baf_cmap()
     fig, ax = plt.subplots()
     _, _, C = plot_heatmap(ax, sim.heatmap_baf, sim.bins, axis, cmap=cmap, norm=norm)
     _, col_bin_ids = axis.grid(sim.bins)
@@ -71,7 +70,7 @@ def test_row_blocks_labelled(axis, sim):
 
 
 def test_side_strips_and_legends(axis, sim):
-    cmap, norm = get_baf_cmap()
+    cmap, norm, _ = get_baf_cmap()
     fig, ax = plt.subplots(figsize=(12, 4))
     _, y_edges, _ = plot_heatmap(
         ax,
@@ -84,12 +83,14 @@ def test_side_strips_and_legends(axis, sim):
         show_block_labels=False,
     )
     celltype = np.where(sim.heatmap_labels == "normal", "normal", "tumor")
-    row_label_map = {"clone": sim.heatmap_labels, "cell_type": celltype}
-    cmaps = build_label_cmaps(row_label_map, primary_label="clone")
+    strips = [
+        {"name": "clone", "values": sim.heatmap_labels},
+        {"name": "cell_type", "values": celltype},
+    ]
 
     n_before = len(fig.axes)
-    info = plot_column_strips(fig, ax, y_edges, row_label_map, cmaps)
-    assert len(fig.axes) == n_before + len(row_label_map)
+    info = plot_column_strips(fig, ax, y_edges, strips)
+    assert len(fig.axes) == n_before + len(strips)
     for _name, color_dict, prop_dict in info:
         assert abs(sum(prop_dict.get(v, 0.0) for v in color_dict) - 1.0) < 1e-9
 
@@ -100,9 +101,12 @@ def test_side_strips_and_legends(axis, sim):
 
 
 def test_plot_heatmap_draws_strips_and_legends(axis, sim, saved):
-    cmap, norm = get_baf_cmap()
+    cmap, norm, _ = get_baf_cmap()
     celltype = np.where(sim.heatmap_labels == "normal", "normal", "tumor")
-    strip_label_map = {"clone": sim.heatmap_labels, "cell_type": celltype}
+    strips = [
+        {"name": "clone", "values": sim.heatmap_labels, "display_name": "Copy-typing"},
+        {"name": "cell_type", "values": celltype, "display_name": "Cell-Type"},
+    ]
     fig, ax = plt.subplots(figsize=(12, 4))
     # one call: mesh + strips + legends, colors auto-built
     plot_heatmap(
@@ -114,17 +118,16 @@ def test_plot_heatmap_draws_strips_and_legends(axis, sim, saved):
         cmap=cmap,
         norm=norm,
         show_block_labels=False,
-        strip_label_map=strip_label_map,
-        display_names={"clone": "Copy-typing", "cell_type": "Cell-Type"},
+        strips=strips,
     )
     # base axes + one per strip
-    assert len(fig.axes) == 1 + len(strip_label_map)
-    assert len(fig.legends) == len(strip_label_map)
+    assert len(fig.axes) == 1 + len(strips)
+    assert len(fig.legends) == len(strips)
     saved(fig, "heatmap_full")
 
 
 def test_dist_strip_draws_and_legends(axis, sim):
-    cmap, norm = get_baf_cmap()
+    cmap, norm, _ = get_baf_cmap()
     order = list(np.unique(sim.heatmap_labels))
     color_dict = {v: c for v, c in zip(order, ["C0", "C1", "C2"], strict=False)}
     # per-row posterior peaked at the true clone
@@ -132,7 +135,13 @@ def test_dist_strip_draws_and_legends(axis, sim):
         [[1.0 if v == lab else 0.0 for v in order] for lab in sim.heatmap_labels]
     )
     prop = {v: float((sim.heatmap_labels == v).mean()) for v in order}
-    dist = ("Copy-typing", post, order, color_dict, prop)
+    dist = {
+        "name": "Copy-typing",
+        "matrix": post,
+        "order": order,
+        "cmap": color_dict,
+        "props": prop,
+    }
 
     fig, ax = plt.subplots(figsize=(12, 4))
     n_before = len(fig.axes)
@@ -145,7 +154,7 @@ def test_dist_strip_draws_and_legends(axis, sim):
         cmap=cmap,
         norm=norm,
         show_block_labels=False,
-        dist_strip=dist,
+        strips=[dist],
     )
     # one strip axes for the distribution, and one legend for it
     assert len(fig.axes) == n_before + 1
@@ -157,7 +166,7 @@ def test_dist_strip_draws_and_legends(axis, sim):
 
 
 def test_colorbar_adds_axes(axis, sim):
-    cmap, norm = get_baf_cmap()
+    cmap, norm, _ = get_baf_cmap()
     fig, ax = plt.subplots(figsize=(12, 4))
     n_before = len(fig.axes)
     plot_heatmap(
@@ -180,7 +189,7 @@ def test_plot_heatmap_cnp_page(axis, sim, saved):
     from matplotlib.collections import QuadMesh
     from matplotlib.patches import Rectangle
 
-    cmap, norm = get_baf_cmap()
+    cmap, norm, _ = get_baf_cmap()
     celltype = np.where(sim.heatmap_labels == "normal", "normal", "tumor")
     fig = plot_heatmap_cnp(
         sim.heatmap_baf,
@@ -194,7 +203,7 @@ def test_plot_heatmap_cnp_page(axis, sim, saved):
         norm=norm,
         cbar_label="BAF",
         cbar_ticks=[0, 0.5, 1],
-        strip_label_map={"cell_type": celltype},
+        strips=[{"name": "cell_type", "values": celltype}],
     )
     assert isinstance(fig, plt.Figure)
     heatmap_ax, profile_ax = fig.axes[0], fig.axes[1]

@@ -59,7 +59,7 @@ class Sim:
         obs: Per-bin observations for the scatter plots: the bin columns plus
             "SAMPLE", "RD", "BAF", "log2RDR", "state" (dominant clone's ``a|b``),
             "cnp" (joint ``;``-joined CNP over all clones, for
-            :func:`~cnplot.cnplot_colormap.build_mixture_cn_cmap`), "CLUSTER"
+            :func:`~cnplot.cnplot_colormap.get_mixcn_cmap`), "CLUSTER"
             (segment id), and "pass_qc".
         expected_1d: Segment-resolution expected values, "#CHR/START/END" plus
             one ``exp_RD_<sample>`` / ``exp_BAF_<sample>`` column per sample.
@@ -217,7 +217,7 @@ def simulate(seed: int = 0, samples: list | None = None) -> Sim:
         df["BAF"] = np.clip(baf_bin + rng.normal(0, SIGMA_BAF, len(df)), 0, 1)
         df["log2RDR"] = np.log2(np.maximum(df["RD"], 1e-6))
         df["state"] = [f"{states[s, dom_k, 0]}|{states[s, dom_k, 1]}" for s in seg_idx]
-        # joint CNP string over all clones, for build_mixture_cn_cmap (keeps a
+        # joint CNP string over all clones, for get_mixcn_cmap (keeps a
         # subclonal segment distinct from a clonal one at the same total CN)
         cnp_by_seg = [
             ";".join(

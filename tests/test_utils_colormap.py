@@ -6,10 +6,11 @@ import numpy as np
 from cnplot import (
     MARKER_SIZE_LARGE,
     MARKER_SIZE_SMALL,
-    build_label_cmaps,
     format_clone_name,
     get_baf_cmap,
     get_cn_cmap,
+    get_log2rdr_cmap,
+    get_multiclass_cmap,
     resolve_colors,
     resolve_marker_size,
     resolve_ylim,
@@ -63,11 +64,18 @@ def test_format_clone_name():
 
 
 def test_baf_cmap_builds():
-    cmap, norm = get_baf_cmap()
+    cmap, norm, ticks = get_baf_cmap()
     assert cmap is not None and norm is not None
+    assert ticks == [0.0, 0.25, 0.5, 0.75, 1.0]
+
+
+def test_log2rdr_cmap_builds():
+    cmap, norm, ticks = get_log2rdr_cmap()
+    assert cmap is not None and norm is not None
+    assert norm.vcenter == 0 and ticks == [-1.0, -0.5, 0.0, 0.5, 1.0]
 
 
 def test_label_cmaps_cover_every_value(sim):
     row_labels = sim.heatmap_labels
-    maps = build_label_cmaps({"clone": row_labels}, primary_label="clone")
+    maps = get_multiclass_cmap({"clone": row_labels}, primary_label="clone")
     assert set(maps["clone"]) >= set(np.unique(row_labels).astype(str))
