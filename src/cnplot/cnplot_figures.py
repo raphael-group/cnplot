@@ -6,9 +6,9 @@ primitives (``plot_scatter_1d``, ``plot_cnv_profile``, ...), and hand back a
 finished figure. They sit at the top of the dependency graph and import across the
 domain modules, which is why they live apart from any one of them.
 
-Planned neighbours (not yet built): ``plot_heatmap_cnp`` (heatmap + CN profile +
-legend page, M6/M9) and the multi-solution CNP panels (``plot_cnp_panel`` /
-``pool_cnp``, M7).
+Built here: ``plot_scatter_1d_multisample`` (stacked 1D panels + shared profile)
+and ``plot_heatmap_cnp`` (heatmap + CN profile + legend page). Planned: the
+multi-solution CNP panels (``plot_cnp_panel`` / ``pool_cnp``, M9).
 """
 
 import logging
@@ -21,6 +21,7 @@ from matplotlib.lines import Line2D
 
 from .cnplot_1d import plot_scatter_1d
 from .cnplot_genome_axis import GenomeAxis
+from .cnplot_heatmap import plot_heatmap
 from .cnplot_intcnp import (
     get_clone_names,
     get_clone_proportions,
@@ -38,6 +39,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "make_row_spec",
+    "plot_heatmap_cnp",
     "plot_scatter_1d_multisample",
 ]
 
@@ -333,4 +335,78 @@ def plot_scatter_1d_multisample(
         plot_cnv_profile(
             ax_profile, seg_df, genome_axis, ax_leg=ax_legend, **profile_kwargs
         )
+    return fig
+
+
+# =============================================================================
+# Single-cell heatmap page
+# =============================================================================
+
+
+def plot_heatmap_cnp(
+    matrix: np.ndarray,
+    coords_df: pd.DataFrame,
+    genome_axis: GenomeAxis,
+    seg_df: pd.DataFrame,
+    sample_id: str | None = None,
+    title: str | None = None,
+    figsize: tuple = (15, 8),
+    height_ratios: tuple = (10, 2, 1.5),
+    profile_hspace: float = 0.18,
+    top: float = 0.84,
+    profile_kwargs: dict | None = None,
+    **heatmap_kwargs,
+) -> plt.Figure:
+    """Compose the single-cell heatmap page: mesh, CN profile, and legend.
+
+    Three stacked rows - the value heatmap (with its colorbar, side strips, and
+    legends), the integer-CN profile, and the profile legend. Only the heatmap
+    carries chromosome names, so the profile is drawn without them.
+
+    Everything that shapes the mesh - the row-reduced ``matrix``, its ``cmap`` /
+    ``norm``, the strips and posterior ``dist_strip`` - is a ``plot_heatmap``
+    argument passed straight through; building those inputs stays with the caller.
+
+    Args:
+        matrix: (n_rows, n_bins) values, columns aligned to ``coords_df`` rows.
+        coords_df: The bins, with "#CHR", "START", "END".
+        genome_axis: Axis shared by the heatmap and the profile.
+        seg_df: seg.ucn profile drawn under the heatmap.
+        sample_id: Sample to draw from ``seg_df`` when it holds several.
+        title: Figure title, bold, above the heatmap. None omits it.
+        figsize: Figure size in inches.
+        height_ratios: Row heights for (heatmap, profile, legend).
+        profile_hspace: Space between the heatmap and the profile below it.
+        top: Top of the axes block in figure fraction; the space above holds the
+            heatmap's rotated chromosome labels and the title.
+        profile_kwargs: Extra arguments for
+            :func:`~cnplot.cnplot_intcnp.plot_cnv_profile`. ``plot_chrname`` is
+            forced off since the heatmap already labels the chromosomes.
+        **heatmap_kwargs: Passed to :func:`~cnplot.cnplot_heatmap.plot_heatmap`;
+            ``show_colorbar`` and hidden block labels default on for the page.
+
+    Returns:
+        The figure. The caller saves and closes it.
+    """
+    heatmap_kwargs.setdefault("show_colorbar", True)
+    heatmap_kwargs.setdefault("show_block_labels", False)
+    profile_kwargs = dict(profile_kwargs or {})
+    profile_kwargs["plot_chrname"] = False
+
+    fig, axes = plt.subplots(
+        3, 1, figsize=figsize, gridspec_kw={"height_ratios": list(height_ratios)}
+    )
+    fig.subplots_adjust(top=top, hspace=profile_hspace)
+
+    plot_heatmap(axes[0], matrix, coords_df, genome_axis, **heatmap_kwargs)
+    plot_cnv_profile(
+        axes[1],
+        seg_df,
+        genome_axis,
+        ax_leg=axes[2],
+        sample_id=sample_id,
+        **profile_kwargs,
+    )
+    if title is not None:
+        fig.suptitle(title, fontsize=14, fontweight="bold", y=0.98)
     return fig

@@ -18,7 +18,7 @@ whose core computation needs scipy. This keeps the dependency set at numpy, pand
 matplotlib, seaborn, adjustText - no optional scientific dependencies.
 
 Priority: M1 -> M2 -> M3 was the critical path; it retires the hard duplication in plan.md
-section 3. M0-M6 are done. M7+ are additive.
+section 3. M0-M7 are done. M8+ are additive.
 
 Ground rule: cnplot never modifies or deletes files in the sibling repos, and downstream
 migration is not interleaved with the build. Finish the package first (M0-M8), then do the
@@ -39,7 +39,7 @@ outside `cnplot/` is touched.
 | `cnplot_1d` | `plot_scatter_1d` - the per-axes 1D primitive |
 | `cnplot_2d` | `plot_scatter_2d`, `get_landmarks` |
 | `cnplot_heatmap` | `plot_heatmap`, `plot_column_strips`, `plot_strip_legend` |
-| `cnplot_figures` | figure builders that compose the primitives: `plot_scatter_1d_multisample`, `make_row_spec` (M7 panels + M6/M9 `plot_heatmap_cnp` land here too) |
+| `cnplot_figures` | figure builders that compose the primitives: `plot_scatter_1d_multisample`, `plot_heatmap_cnp`, `make_row_spec` (M9 multi-solution panels land here too) |
 
 Two tiers, kept in separate modules: **primitives** take an `ax` you own and return
 None (`plot_scatter_1d`, `plot_cnv_profile`, `plot_heatmap`); **figure builders** own the
@@ -65,7 +65,7 @@ and `ruff check` clean.
       `package-dir = {"" = "src"}`, version dynamic via `attr = "cnplot.__version__"`.
 - [x] Deps: `numpy`, `pandas`, `matplotlib`, `seaborn`, `adjustText`. Only extra is `dev`.
       `seaborn` is needed by M2 (`sns.color_palette`) and M4/M5 (`scatterplot`, `kdeplot`,
-      `move_legend`); `adjustText` by M5/M7 label placement.
+      `move_legend`); `adjustText` by M5 landmarks and the M9 panels' label placement.
 - [x] `LICENSE`: MIT, declared via PEP 639 (`license = "MIT"` + `license-files`), which is
       why the build needs setuptools>=77. No sibling repo had a LICENSE to match.
 - [x] `[project]` metadata: authors, keywords, urls (raphael-group/cnplot), classifiers.
@@ -557,18 +557,19 @@ Stays in Copytyping (upstream, needs `model_utils` / `anns`), tracked for the M9
 `_row_layout`, `_aggregate_columns`, `_mode`, `prepare_rdr` / `prepare_baf` / `prepare_pi_gk`,
 and the `plot_cnv_heatmap` page builder that pools counts and calls all of the above.
 
-## M7. Additional modules (not yet stubbed)
+## M7. `plot_heatmap_cnp` - the heatmap page builder - DONE
 
-- [ ] `cnplot_tree.py`: HATCHet `render_cnt_tree` (clone tree). Check its drawing backend
-      first - may pull a non-matplotlib dependency, which would put it out of scope.
-- [ ] Multi-solution CNP grids into **`cnplot_figures.py`** (not a separate panel module -
-      it is the one home for figure builders): HATCHet `plot_cnp_panel.run`, `plot_pool_cnp`,
-      `plot_summary_pdf` / `plot_bars`, `plot_scaling_2d`. Strip the solution-loading glue
-      (`override_solution`, `load_gammas`, `get_expected_baf_fcn`) and keep only the drawing.
-- [ ] `plot_heatmap_cnp` into `cnplot_figures.py` (M6/M9): the heatmap page - heatmap + CN
-      profile + legend + colorbar + strips - currently composed by hand in the gallery.
-      Should expose its own `profile_hspace`-style spacing knob so callers do not set
-      `subplots_adjust` themselves.
+- [x] `plot_heatmap_cnp` in `cnplot_figures.py`: the heatmap page - heatmap (with colorbar,
+      side strips, posterior `dist_strip`, and legends) over the integer-CN profile and its
+      legend, in three rows. Replaces the gallery's hand-composed `heatmap_page`. Layout
+      knobs are its own (`figsize`, `height_ratios`, `profile_hspace`, `top`), so callers do
+      not touch `subplots_adjust`; everything that shapes the mesh is a `plot_heatmap`
+      argument passed straight through, and `plot_chrname` is forced off on the profile since
+      the heatmap already labels the chromosomes. The reducers that build the matrix and the
+      posterior strip stay upstream (see M6 note); this is only the layout.
+- [x] Verified: `test_plot_heatmap_cnp_page` asserts the mesh, the profile rectangles
+      (2 clones x segments), the added colorbar + strip axes, and that only the heatmap
+      carries chromosome labels. Gallery pages 5 and 6 now render through this one call.
 
 ## M8. Public API and quality
 
@@ -636,7 +637,15 @@ built, and none of it edits or deletes files in the sibling repos on cnplot's be
       color and marker-size helpers for the grid cells - rather than reimplementing them.
       The cross-tab layout and the BAF-histogram fallback stay Copytyping's.
 - [ ] Only after a repo has adopted cnplot: revisit anything descoped for lack of a second
-      consumer, e.g. HATCHet's `plot_clusters` (M5) and the clone tree (M7).
+      consumer, e.g. HATCHet's `plot_clusters` (M5).
+- [ ] Multi-solution CNP grids into `cnplot_figures.py`: HATCHet `plot_cnp_panel.run`,
+      `plot_pool_cnp`, `plot_summary_pdf` / `plot_bars`, `plot_scaling_2d`. Strip the
+      solution-loading glue (`override_solution`, `load_gammas`, `get_expected_baf_fcn`) and
+      keep only the drawing. Deferred from M7 - single HATCHet consumer, so it migrates with
+      HATCHet rather than being built speculatively.
+- [ ] `cnplot_tree.py`: HATCHet `render_cnt_tree` (clone tree). Check its drawing backend
+      first - may pull a non-matplotlib dependency, which would put it out of scope. Deferred
+      from M7 for the same reason.
 
 ---
 

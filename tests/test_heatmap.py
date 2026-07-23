@@ -6,6 +6,7 @@ import pytest
 from matplotlib.colors import TwoSlopeNorm
 
 from cnplot.cnplot_colormap import build_label_cmaps, get_baf_cmap
+from cnplot.cnplot_figures import plot_heatmap_cnp
 from cnplot.cnplot_heatmap import plot_column_strips, plot_heatmap, plot_strip_legend
 
 
@@ -167,3 +168,39 @@ def test_colorbar_adds_axes(axis, sim):
     )
     assert len(fig.axes) == n_before + 1  # the colorbar axes
     plt.close(fig)
+
+
+def test_plot_heatmap_cnp_page(axis, sim, saved):
+    import matplotlib.pyplot as plt
+    from matplotlib.collections import QuadMesh
+    from matplotlib.patches import Rectangle
+
+    cmap, norm = get_baf_cmap()
+    celltype = np.where(sim.heatmap_labels == "normal", "normal", "tumor")
+    fig = plot_heatmap_cnp(
+        sim.heatmap_baf,
+        sim.bins,
+        axis,
+        sim.seg_ucn,
+        sample_id="S1",
+        title="page",
+        row_labels=sim.heatmap_labels,
+        cmap=cmap,
+        norm=norm,
+        cbar_label="BAF",
+        cbar_ticks=[0, 0.5, 1],
+        strip_label_map={"cell_type": celltype},
+    )
+    assert isinstance(fig, plt.Figure)
+    heatmap_ax, profile_ax = fig.axes[0], fig.axes[1]
+    # heatmap mesh on the top axes
+    assert any(isinstance(c, QuadMesh) for c in heatmap_ax.collections)
+    # CN profile rectangles on the middle axes (two clones x segments)
+    n_seg = len(sim.seg_ucn[sim.seg_ucn["SAMPLE"] == "S1"])
+    assert len([p for p in profile_ax.patches if isinstance(p, Rectangle)]) >= 2 * n_seg
+    # colorbar + one strip axes were added beyond the three base axes
+    assert len(fig.axes) >= 3 + 2
+    # only the heatmap carries chromosome labels; the profile does not
+    prof_labels = [t.get_text() for t in profile_ax.get_xticklabels() if t.get_text()]
+    assert prof_labels == []
+    saved(fig, "heatmap_cnp_page")
