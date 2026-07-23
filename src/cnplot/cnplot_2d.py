@@ -397,7 +397,7 @@ def plot_scatter_2d(
             )
             if props:
                 handles = [
-                    Line2D([0], [0], alpha=0, label=f"{name}: {prop:.3f}")
+                    Line2D([0], [0], alpha=0, label=f"{name}: {prop * 100:.2f}%")
                     for name, prop in props.items()
                     if name == normal or name in shown
                 ]

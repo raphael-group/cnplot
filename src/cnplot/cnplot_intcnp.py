@@ -21,7 +21,7 @@ import numpy as np
 import pandas as pd
 from matplotlib.patches import Rectangle
 
-from .cnplot_colormap import get_ascn_colors, get_cn_colors
+from .cnplot_colormap import get_ascn_cmap, get_cn_cmap
 from .cnplot_genome_axis import GenomeAxis
 from .cnplot_utils import (
     CN_PREFIX,
@@ -403,7 +403,7 @@ def plot_cnv_profile(
     ylabel: str | None = None,
     plot_chrname: bool = True,
     show_clone_name: bool = True,
-    show_prop: bool = True,
+    show_prop: bool = False,
     show_pi_viol: bool = True,
     clone_ploidies: dict | None = None,
     show_mirror: bool = True,
@@ -474,7 +474,7 @@ def plot_cnv_profile(
     props = get_clone_proportions(seg_df, clones) if show_prop else None
     pi_viol = get_pi_viol(seg_df) if show_pi_viol else None
 
-    state_style, _ = get_cn_colors()
+    state_style, _ = get_cn_cmap()
     mirrored = _mirrored_bins(states) if show_mirror else None
     num_clones = len(clones)
     h = height / num_clones
@@ -576,7 +576,7 @@ def _plot_cnv_legend(
         fontsize: Swatch label font size.
 
     """
-    state_style, tcn_states = get_cn_colors()
+    state_style, tcn_states = get_cn_cmap()
     ax.axis("off")
 
     gap_pairs = 0.0
@@ -661,7 +661,7 @@ def plot_ascn_profile(
     ylabel: str | None = None,
     plot_chrname: bool = True,
     show_clone_name: bool = True,
-    show_prop: bool = True,
+    show_prop: bool = False,
     clone_ploidies: dict | None = None,
     show_mirror: bool = True,
     outline_alleles: bool = True,
@@ -728,7 +728,7 @@ def plot_ascn_profile(
     states = get_clone_states(seg_df, clones)
     props = get_clone_proportions(seg_df, clones) if show_prop else None
 
-    state_style, _ = get_ascn_colors()
+    state_style, _ = get_ascn_cmap()
     mirrored = _mirrored_bins(states) if show_mirror else None
     num_clones = len(clones)
     h = height / num_clones
@@ -860,7 +860,7 @@ def _plot_ascn_legend(
             chevrons.
 
     """
-    state_style, tcn_states = get_ascn_colors()
+    state_style, tcn_states = get_ascn_cmap()
     boxes = list(tcn_states) + ["7+"]
     ax.axis("off")
 

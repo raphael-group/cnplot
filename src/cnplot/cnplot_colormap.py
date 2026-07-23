@@ -2,11 +2,12 @@
 
 Three independent palettes:
 
-- joint CN states (a, b) -> :func:`get_cn_colors`, shared by profiles, legends,
+- joint CN states (a, b) -> :func:`get_cn_cmap`, shared by profiles, legends,
   and scatter points so all three agree.
-- per-allele CN -> :func:`get_ascn_colors`, a sequential ramp for A/B panels.
-- categorical labels -> :func:`build_label_colors` and friends, which keep
-  "normal" and missing labels neutral.
+- per-allele CN -> :func:`get_ascn_cmap`, a sequential ramp for A/B panels.
+- categorical labels -> :func:`build_label_cmaps`, which colors several
+  annotation strips from one shared palette and keeps "normal" and missing
+  labels neutral.
 
 Functions taking ``invalid_labels`` or ``na_labels`` default to the module
 constants but accept caller-supplied sets, since what counts as "missing" belongs
@@ -30,13 +31,11 @@ __all__ = [
     "NORMAL_COLOR",
     "POSTERIOR_CMAP",
     "PURITY_CMAP",
-    "build_categorical_color_map",
-    "build_cnp_palette",
-    "build_label_color_maps",
-    "build_label_colors",
-    "get_ascn_colors",
-    "get_cn_colors",
-    "make_baf_cmap",
+    "build_mixture_cn_cmap",
+    "build_label_cmaps",
+    "get_ascn_cmap",
+    "get_cn_cmap",
+    "get_baf_cmap",
     "set_palette",
 ]
 
@@ -214,22 +213,6 @@ def _is_normal_like(label: str) -> bool:
     return str(label).lower().startswith("normal")
 
 
-def _label_color_index(label: str) -> int:
-    """Compute a stable palette index for a clone label.
-
-    Args:
-        label: Label to index, e.g. "clone3".
-
-    Returns:
-        Zero-based index: cloneN maps to N-1 so numbering is stable across
-        figures, and any other label falls back to a hash.
-    """
-    m = re.match(r"clone(\d+)", str(label))
-    if m:
-        return int(m.group(1)) - 1
-    return hash(str(label)) % len(_TUMOR_COLORS)
-
-
 def _is_colored_label(label: str, invalid_labels, na_labels) -> bool:
     """Test whether a label consumes a palette slot.
 
@@ -275,8 +258,8 @@ def _clone_order_key(label: str, invalid_labels) -> tuple:
 # =============================================================================
 
 
-def get_cn_colors() -> tuple:
-    """Return the integer allele-specific copy-number palette.
+def get_cn_cmap() -> tuple:
+    """Return the integer allele-specific copy-number color map and legend order.
 
     Keyed by (a, b) under both orderings, so (2, 1) and (1, 2) render alike.
     States above total CN 7 fall through to the default color.
@@ -297,8 +280,8 @@ def get_cn_colors() -> tuple:
     return state_style, tcn_states
 
 
-def get_ascn_colors() -> tuple:
-    """Return the per-allele copy-number palette.
+def get_ascn_cmap() -> tuple:
+    """Return the per-allele copy-number color map and legend order.
 
     A sequential ramp: 0 white, 1 black, 2 upward sampling inferno from 0.65 to
     0.97, which is perceptually uniform and colorblind-safe. Callers draw
@@ -322,7 +305,7 @@ def get_ascn_colors() -> tuple:
     return state_style, tcn_states
 
 
-def build_cnp_palette(
+def build_mixture_cn_cmap(
     clone_states,
     clone_props=None,
     display_min_clone_prop: float | None = None,
@@ -344,7 +327,7 @@ def build_cnp_palette(
     Returns:
         {cnp_string: color} covering every entry of ``clone_states``.
     """
-    state_style, _ = get_cn_colors()
+    state_style, _ = get_cn_cmap()
 
     def visible(j):
         """Test whether clone j is above the display threshold.
@@ -383,7 +366,7 @@ def build_cnp_palette(
     return palette
 
 
-def make_baf_cmap() -> tuple:
+def get_baf_cmap() -> tuple:
     """Build the discrete diverging BAF colormap.
 
     Ten equal bins over [0, 1]: blue A-skewed, gray balanced, red B-skewed.
@@ -404,82 +387,7 @@ def make_baf_cmap() -> tuple:
 # =============================================================================
 
 
-def build_label_colors(
-    categories: list,
-    clone_indexed: bool = True,
-    invalid_labels=INVALID_LABELS,
-) -> list:
-    """Assign colors to clone labels, in the given order.
-
-    Args:
-        categories: Labels to color.
-        clone_indexed: Derive each color from the clone number, so clone2 keeps
-            its color whether or not clone1 is present. If False, colors are
-            handed out in encounter order instead.
-        invalid_labels: Labels drawn in the missing-data gray.
-
-    Returns:
-        Colors aligned to ``categories``: invalid labels gray, "normal" light
-        gray, and the rest from tab10.
-    """
-    colors = []
-    tumor_i = 0
-    for c in categories:
-        if c in invalid_labels:
-            colors.append(NA_COLOR)
-        elif c == "normal":
-            colors.append(NORMAL_COLOR)
-        elif clone_indexed:
-            colors.append(_TUMOR_COLORS[_label_color_index(c) % len(_TUMOR_COLORS)])
-        else:
-            colors.append(_TUMOR_COLORS[tumor_i % len(_TUMOR_COLORS)])
-            tumor_i += 1
-    return colors
-
-
-def build_categorical_color_map(
-    values: np.ndarray,
-    cmap_name: str,
-    invalid_labels=INVALID_LABELS,
-    na_labels=NA_CELLTYPE,
-) -> dict:
-    """Build a color map for one categorical annotation.
-
-    Values cycle a named colormap in sorted order, keeping the palette distinct
-    from the shared clone one. Use for cell types, datasets, and the like.
-
-    Args:
-        values: Observed label values; duplicates are collapsed.
-        cmap_name: Named matplotlib colormap, ideally qualitative.
-        invalid_labels: Labels drawn in the missing-data gray.
-        na_labels: Labels treated as missing.
-
-    Returns:
-        {value: color} covering every distinct value in ``values``.
-    """
-    cats = sorted({str(v) for v in values})
-    cmap = plt.get_cmap(cmap_name)
-    listed = getattr(cmap, "colors", None)
-    if listed is not None:
-        palette = [mcolors.to_hex(c) for c in listed]
-    else:
-        n = max(len(cats), 1)
-        palette = [mcolors.to_hex(cmap(i / n)) for i in range(n)]
-
-    color_map = {}
-    j = 0
-    for c in cats:
-        if c in invalid_labels or c in na_labels:
-            color_map[c] = NA_COLOR
-        elif _is_normal_like(c):
-            color_map[c] = NORMAL_COLOR
-        else:
-            color_map[c] = palette[j % len(palette)]
-            j += 1
-    return color_map
-
-
-def build_label_color_maps(
+def build_label_cmaps(
     row_label_map: dict,
     primary_label: str | None,
     invalid_labels=INVALID_LABELS,
@@ -534,7 +442,7 @@ def build_label_color_maps(
     )
     value_color = {c: palette[i % len(palette)] for i, c in enumerate(ordered_values)}
 
-    color_maps = {}
+    cmaps = {}
     for name in names:
         cmap = {}
         for c in cats_for(name):
@@ -544,8 +452,8 @@ def build_label_color_maps(
                 cmap[c] = NORMAL_COLOR
             else:
                 cmap[c] = value_color[c]
-        color_maps[name] = cmap
-    return color_maps
+        cmaps[name] = cmap
+    return cmaps
 
 
 # =============================================================================

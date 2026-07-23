@@ -18,7 +18,7 @@ whose core computation needs scipy. This keeps the dependency set at numpy, pand
 matplotlib, seaborn, adjustText - no optional scientific dependencies.
 
 Priority: M1 -> M2 -> M3 was the critical path; it retires the hard duplication in plan.md
-section 3. M0-M5 are done. M6+ are additive.
+section 3. M0-M6 are done. M7+ are additive.
 
 Ground rule: cnplot never modifies or deletes files in the sibling repos, and downstream
 migration is not interleaved with the build. Finish the package first (M0-M8), then do the
@@ -36,11 +36,21 @@ outside `cnplot/` is touched.
 | `cnplot_genome_axis` | `GenomeAxis`, `Gap`, `Segment`, `BinCoords` - pure geometry |
 | `cnplot_utils` | column-name constants, axis decoration, marker/color/limit resolution, `FigureSaver` |
 | `cnplot_intcnp` | `plot_cnv_profile` - draws its own legend (+ legacy ascn pair) |
-| `cnplot_1d` | `plot_scatter_1d`, `plot_scatter_1d_multisample`, `make_row_spec` |
+| `cnplot_1d` | `plot_scatter_1d` - the per-axes 1D primitive |
 | `cnplot_2d` | `plot_scatter_2d`, `get_landmarks` |
+| `cnplot_heatmap` | `plot_heatmap`, `plot_column_strips`, `plot_strip_legend` |
+| `cnplot_figures` | figure builders that compose the primitives: `plot_scatter_1d_multisample`, `make_row_spec` (M7 panels + M6/M9 `plot_heatmap_cnp` land here too) |
+
+Two tiers, kept in separate modules: **primitives** take an `ax` you own and return
+None (`plot_scatter_1d`, `plot_cnv_profile`, `plot_heatmap`); **figure builders** own the
+layout, create a figure, call the primitives, and return it (`cnplot_figures`). This mirrors
+HATCHet's own split (primitives in `plot_1d2d.py`, `plot_combined_1d` builder in
+`plot_utils.py`). `plot_scatter_2d` returns a `JointGrid` but stays a primitive - it is one
+plot that owns a figure only because seaborn forces it, not a composition.
 
 Dependencies run one way: `io_utils` and `colormap` are leaves, `genome_axis` -> `io_utils`,
-`utils` -> `genome_axis`, `intcnp` -> all three, and `1d` / `2d` sit on top of `intcnp`.
+`utils` -> `genome_axis`, `intcnp` -> all three, `1d` / `2d` / `heatmap` sit on top of the
+primitives, and `figures` sits above everything (imports `1d`, `intcnp`, `utils`).
 `io_utils` and `genome_axis` are matplotlib-free, so the coordinate logic is testable
 without a plotting backend. Verified acyclic by AST scan of the relative imports.
 
@@ -164,17 +174,25 @@ Behavior changes vs the originals, all documented in the docstrings:
 
 ## M2. `cnplot_colormap.py` - palettes - DONE
 
-- [x] `get_cn_colors()` - was byte-identical in both repos; now single-source in cnplot
+- [x] `get_cn_cmap()` - was byte-identical in both repos; now single-source in cnplot
       (the host-repo copies stay put until their owners retire them). Palette and
       state list lifted to module constants so the table is visible without reading the
       function. Verified against the original 20 entries, both orderings.
-- [x] `get_ascn_colors()` - same treatment; values verified.
-- [x] `build_cnp_palette` + `_distinct_subclonal_colors` (HATCHet).
-- [x] `make_baf_cmap` (Copytyping). Note it uses `ListedColormap` + `BoundaryNorm`, not
+- [x] `get_ascn_cmap()` - same treatment; values verified.
+- [x] `build_mixture_cn_cmap` + `_distinct_subclonal_colors` (HATCHet).
+- [x] `get_baf_cmap` (Copytyping). Note it uses `ListedColormap` + `BoundaryNorm`, not
       `TwoSlopeNorm` as the earlier inventory claimed.
-- [x] Label-color machinery: `build_label_colors`, `build_label_color_maps`,
-      `build_categorical_color_map`, `_clone_order_key`, `_is_normal_like`,
-      `_is_colored_label`, `_label_color_index`.
+- [x] Label-color machinery: `build_label_cmaps` (the live one, used by the heatmap
+      strips), `_clone_order_key`, `_is_normal_like`, `_is_colored_label`. Removed
+      2026-07-23 as dead code: `build_label_colors` (a clone-indexed color *list* for
+      Copytyping's `plot_scatter_2d_per_cell`, which stays upstream) and
+      `build_categorical_cmap` (per-annotation named palette, e.g. datasets in Set1), plus
+      the now-orphaned `_label_color_index`. Neither is subsumed by `build_label_cmaps`,
+      which only draws from the shared clone palette; re-add them in M9 if the dataset /
+      cell-type strips or the per-cell diagnostic migrate onto cnplot.
+- [x] Naming convention (2026-07-23): built-in palettes `get_*`, data-derived `build_*`,
+      global mutators `set_*`; suffix by return shape - `_cmap` for a colormap-like
+      lookup or `(Colormap, Norm)`, `_cmaps` for several, `_colors` for a list.
 - [x] `set_palette` ported from HATCHet; docstring flags that it mutates seaborn globals.
 - [x] Resolved: `INVALID_LABELS` / `NA_CELLTYPE` ship as module defaults but every function
       that consults them takes `invalid_labels=` / `na_labels=` overrides. Callers keep
@@ -238,7 +256,7 @@ Public surface is one function; everything else is support code:
 Verified by reading all 7 benchmark `seg.ucn` files off disk and plotting with no manual
 assembly, across 3- and 4-clone solutions: clone names and order, state array shape,
 proportions, y-tick count/order/labels, every rectangle's facecolor against
-`get_cn_colors`, `normal=None`, a `clones=` subset, custom and missing normal names,
+`get_cn_cmap`, `normal=None`, a `clones=` subset, custom and missing normal names,
 `show_prop=False`, `PI_VIOL` pickup in both cases, multi-sample selection by default and
 by id, and the empty-table / missing-column / unknown-sample errors.
 
@@ -340,7 +358,12 @@ Copytyping's non-clone groups (`"NA"`, unmatched labels) drop out today.
       plot_cn.py:160-168). Fold into `cnplot_utils` and drive both off the observed and
       expected values actually passed in.
 
-## M4. `cnplot_1d.py` - 1D genome scatter - DONE
+## M4. `cnplot_1d.py` + `cnplot_figures.py` - 1D genome scatter - DONE
+
+Split 2026-07-23: `plot_scatter_1d` (per-axes primitive) stays in `cnplot_1d`;
+`plot_scatter_1d_multisample` + `make_row_spec` (the figure builder) moved to the new
+`cnplot_figures` module. See the Module layout note on the primitive / figure-builder tiers.
+
 
 - [x] `plot_scatter_1d(ax, obs_df, genome_axis, ycol, ...)`. Once tier 1 is removed,
       `plot_1d` and `plot_scatter_1d_pseudobulk` are the same renderer step for step:
@@ -365,8 +388,8 @@ Copytyping's non-clone groups (`"NA"`, unmatched labels) drop out today.
       This is the same principle as the expected-line break: never draw across sequence that
       is not on the axis.
 - [x] Hue is a column name plus a palette dict. HATCHet colors by joint CNP cluster string
-      (`build_cnp_palette`, plot_cn_utils.py:383), Copytyping by that group's (A, B) state
-      (`get_cn_colors`). Different meaning, identical rendering call - so the core takes a
+      (`build_mixture_cn_cmap`, plot_cn_utils.py:383), Copytyping by that group's (A, B) state
+      (`get_cn_cmap`). Different meaning, identical rendering call - so the core takes a
       categorical label per row and a palette, and neither semantics is baked in.
 - [x] Break the `g0_colors` coupling. HATCHet runs `plot_2d` first and feeds its returned
       face colors into `plot_1d` as `colors=` (plot_cn.py:230 -> plot_utils.py:156), making
@@ -490,37 +513,87 @@ becomes an M9 consumer of the library rather than a port.
       diagnostic plots gain the shrink-gap layout they currently cannot use. The plumbing
       is a HATCHet change, so it belongs to M9 - see the `cluster_bins` item there.
 
-## M6. `cnplot_heatmap.py` - single-cell CN heatmap
+## M6. `cnplot_heatmap.py` - single-cell CN heatmap - DONE
 
-Copytyping-only, no dedup pressure.
+Copytyping-only, no dedup pressure. The line between what ported and what stayed follows M5:
+cnplot draws a matrix already reduced to rows; the reducers - which need
+`copytyping.inference.model_utils` and the `anns` table - stay upstream. Copytyping's
+imports made the reuse map explicit: everything `plot_heatmap` pulled from
+`plot_common` / `plot_copynumber` (`build_wl_coords`, `get_baf_cmap`, `BAF_COLORS`,
+`build_label_cmaps`, `PURITY_CMAP`, `plot_cnv_profile`) already exists in cnplot.
 
-- [ ] Port `plot_heatmap`, `plot_cnv_heatmap`, `plot_label_strips`, `draw_label_legends`.
-- [ ] Port `_row_layout`, `_aggregate_columns`, `_mode`, `_display_name`.
-- [ ] `prepare_rdr` / `prepare_baf` / `prepare_pi_gk` depend on
-      `copytyping.inference.model_utils` (`cell_rdr_matrix`, `cell_baf_matrix`) - accept
-      precomputed matrices rather than vendoring the reducers.
-- [ ] Reuse M1 `x_edges` / `col_bin_ids` for the `pcolormesh` grid.
-- [ ] Dense-only; Copytyping's heatmap has no sparse handling to port.
+- [x] `plot_heatmap(ax, matrix, coords_df, genome_axis, row_labels=, ...)`. Takes a
+      precomputed `(n_rows, n_bins)` matrix; columns are placed by `GenomeAxis.grid`, so the
+      whole coordinate block, the chromosome vlines, and the centromere dashes are the M1
+      helpers rather than the inline versions. Returns `(x_edges, y_edges, masked)` so a
+      caller can align side strips to the same rows.
+- [x] Filler columns are masked, so no value bleeds across a gap - the mesh analogue of the
+      expected-line and dash fixes. Verified: masked columns equal exactly the `-1` filler
+      columns from `grid`.
+- [x] Categorical side strips and their legends are `plot_column_strips` and
+      `plot_strip_legend` (renamed from Copytyping's `plot_label_strips` /
+      `draw_label_legends`). General chrome, no data-model dependency; `_display_name`'s
+      hardcoded label map became a `display_names=` argument. `plot_heatmap` calls both
+      itself when given `strip_label_map=`, mirroring the profile's `ax_leg=`, so one call
+      draws mesh + strips + legends and the user need not orchestrate the pieces.
+- [x] `plot_heatmap` also draws the value **colorbar** (`show_colorbar=`, `cbar_label=`,
+      `cbar_ticks=`) right of the axes, before the legends. Copytyping had this as a separate
+      `add_colorbar` helper in the page builder.
+- [x] Reuses M1 `grid()` for the `pcolormesh` mesh; the collapsed-gap dashing reuses
+      `draw_segment_boundaries`, so it inherits the M4 fix (dash only where width was
+      removed).
+- [x] Dense-only; Copytyping's heatmap has no sparse handling to port.
+- [x] Verified against the M6 tests (real profile / T2T sim): mesh geometry, filler==masked,
+      one boxed y-tick per label run, chr labels on top, the column-mismatch guard, aligned
+      side strips whose per-value fractions sum to 1, both legends, and the colorbar axes.
+
+Coloring note (not an M6 bug): a scatter colored by a **single** clone's state collapses a
+subclonal segment onto a clonal one at the same total CN. The joint-CNP coloring is
+`build_mixture_cn_cmap` (M2), which gives subclonal states their own colors while clonal states
+keep the integer-CN color - that is what the gallery uses (`hue="cnp"`), and the palette has
+no color collisions (each distinct `(a, b)` is unique).
+
+Stays in Copytyping (upstream, needs `model_utils` / `anns`), tracked for the M9 refactor:
+`_row_layout`, `_aggregate_columns`, `_mode`, `prepare_rdr` / `prepare_baf` / `prepare_pi_gk`,
+and the `plot_cnv_heatmap` page builder that pools counts and calls all of the above.
 
 ## M7. Additional modules (not yet stubbed)
 
 - [ ] `cnplot_tree.py`: HATCHet `render_cnt_tree` (clone tree). Check its drawing backend
       first - may pull a non-matplotlib dependency, which would put it out of scope.
-- [ ] `cnplot_panel.py`: multi-solution CNP grids - HATCHet `plot_cnp_panel.run`,
-      `plot_pool_cnp`, `plot_summary_pdf` / `plot_bars`, `plot_scaling_2d`. Strip the
-      solution-loading glue (`override_solution`, `load_gammas`, `get_expected_baf_fcn`)
-      and keep only the drawing.
+- [ ] Multi-solution CNP grids into **`cnplot_figures.py`** (not a separate panel module -
+      it is the one home for figure builders): HATCHet `plot_cnp_panel.run`, `plot_pool_cnp`,
+      `plot_summary_pdf` / `plot_bars`, `plot_scaling_2d`. Strip the solution-loading glue
+      (`override_solution`, `load_gammas`, `get_expected_baf_fcn`) and keep only the drawing.
+- [ ] `plot_heatmap_cnp` into `cnplot_figures.py` (M6/M9): the heatmap page - heatmap + CN
+      profile + legend + colorbar + strips - currently composed by hand in the gallery.
+      Should expose its own `profile_hspace`-style spacing knob so callers do not set
+      `subplots_adjust` themselves.
 
 ## M8. Public API and quality
 
 - [ ] `__init__.py`: explicit re-exports + `__all__`. No lazy-import machinery needed.
 - [ ] Remove all `from hatchet.* import` / `from copytyping.* import` / `import *` usages.
 - [ ] Type hints on all public functions; Google-style docstrings with Args/Returns.
-- [ ] Tests: golden-image or numeric-invariant per module (matplotlib `Agg`), with synthetic
-      fixtures for region BEDs, sizes files, and seg.ucn tables. The differential script
-      that checked M1/M2 against the inlined originals still targets the pre-class
-      `build_genome_axis` signature and needs rewriting against `GenomeAxis`; fold it into
-      `tests/` so the equivalence keeps being checked rather than being a one-off result.
+- [x] Tests: `tests/` built ahead of M7 (2026-07-23). One `simulate.py` generates a
+      deterministic dataset in **every** input format - bins, seg.ucn, per-bin observations,
+      `exp_<col>_<group>` overlays, and per-cell heatmap matrices - from a **real 22-chromosome
+      CNP profile** (69 segments, states `1|0`..`2|2`) over the **real T2T-CHM13v2.0**
+      arm reference. The three files are vendored under `tests/data/` (seg.ucn ~7 KB, BED, and
+      sizes), so tests are self-contained and deterministic while exercising real gap structure
+      (17 interior + 5 leading gaps) and real CN diversity. Fine bins are cut inside each
+      segment (~1,270 bins); observed values are the bulk clone mixture plus noise, heatmap
+      rows are per-cell single-clone truths plus noise. The profile has no mirrored segment, so the
+      mirror-swatch and mirror-rule tests build a small synthetic `2|1` vs `1|2` profile inline.
+      46 tests over `pytest` + `Agg`: geometry and containment (no backend), palettes and the
+      resolvers, the profile with its conditional mirror swatch and PI_VIOL overlay, 1D scatter
+      / multi-sample / `keep_col` / the gap-dash and expected-line-break rules, 2D landmarks
+      with the joint-vs-single-clone convention switch, and the heatmap (mesh + masked filler +
+      the one-call side strips + legends). Plotting tests render to `tmp_path` and assert the
+      figure is non-empty plus structural invariants. `pythonpath = ["src", "tests"]` and
+      `known-first-party` wire it up. Pending: `pytest-cov` is in the `dev` extra, so run
+      coverage there; the original M1/M2 differential could still be folded in as a golden
+      check.
 - [ ] Docs: README API section + an `examples/` notebook per module.
 - [ ] `CHANGELOG.md` (empty): start at 0.1.0.
 - [ ] Publish: `twine check dist/*` (twine is in the `dev` extra, not `base`), then
