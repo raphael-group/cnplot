@@ -7,9 +7,10 @@ and Copytyping already write: "#CHR", "START", "END", a ``cn_<clone>`` column of
 derived from the columns, so callers pass one DataFrame rather than assembling
 parallel arrays.
 
-The supported surface is :func:`plot_cnv_profile` and :func:`plot_cnv_legend`.
-Everything else is support code: the seg.ucn readers are importable for callers
-who want the parsed pieces, but they are not part of the interface and may change.
+The supported surface is :func:`plot_cnv_profile`, which draws its own legend when
+given a second axes. Everything else is support code: the seg.ucn readers are
+importable for callers who want the parsed pieces, but they are not part of the
+interface and may change.
 """
 
 import logging
@@ -35,7 +36,6 @@ from .cnplot_utils import (
 )
 
 __all__ = [
-    "plot_cnv_legend",
     "plot_cnv_profile",
 ]
 
@@ -98,7 +98,7 @@ def _finish_clone_axis(
     Args:
         ax: Axes to style.
         genome_axis: Genome axis supplying limits and chromosome ticks.
-        clones: Clone names in stacking order, bottom row first.
+        clones: Clone names in stacking order, top row first.
         height: Total height of the stack in axes fraction.
         plot_chrname: Draw chromosome labels along the top.
         clone_ploidies: Optional {clone: ploidy} map.
@@ -394,6 +394,7 @@ def plot_cnv_profile(
     ax: plt.Axes,
     seg_df: pd.DataFrame,
     genome_axis: GenomeAxis,
+    ax_leg: plt.Axes | None = None,
     sample_id: str | None = None,
     normal: str | None = NORMAL_CLONE,
     clones: list | None = None,
@@ -407,12 +408,14 @@ def plot_cnv_profile(
     clone_ploidies: dict | None = None,
     show_mirror: bool = True,
     clone_separators: bool = True,
+    contain: bool = True,
+    legend_kwargs: dict | None = None,
     rasterized: bool = True,
-) -> plt.Axes:
+) -> None:
     """Draw a stacked integer copy-number profile, one row per clone.
 
     Each bin becomes a rectangle per clone, colored by its joint (a, b) state,
-    with clone 1 as the bottom row. The selected sample's bins are matched onto
+    with clone 1 as the top row. The selected sample's bins are matched onto
     ``genome_axis`` by coordinate, taking only those that lie entirely inside a segment.
 
     Args:
@@ -422,6 +425,9 @@ def plot_cnv_profile(
             ``PI_VIOL`` flag.
         genome_axis: Genome axis to draw on, built once from the reference and reusable
             across samples and panels. Bins are matched to it by coordinate.
+        ax_leg: Axes for the legend, drawn in place. None omits it. The mirrored
+            swatch appears only when a mirrored bin was actually hatched, so the
+            legend never advertises a state the figure does not contain.
         sample_id: Sample to draw when the table holds several. None takes the
             first one present.
         normal: Name of the normal clone, excluded from the stack. None draws
@@ -443,10 +449,14 @@ def plot_cnv_profile(
             leans the same way is not hatched, since the palette gives (a, b) and
             (b, a) one color and a uniform lean carries no information.
         clone_separators: Draw horizontal rules between adjacent clone rows.
+        contain: Require a row to lie entirely inside a region to be drawn,
+            which is exact when the profile was called against the same regions
+            being plotted. False clips overlapping rows instead. Leaving it True
+            means a reference mismatch shows up as a loud unmapped-row warning
+            rather than as a quietly clipped, plausible-looking figure.
+        legend_kwargs: Extra styling forwarded to the legend, ignored without
+            ``ax_leg``.
         rasterized: Rasterize the rectangles, keeping vector output small.
-
-    Returns:
-        The axes, for chaining.
 
     Raises:
         ValueError: If ``seg_df`` is empty or has no clone left to draw.
@@ -459,7 +469,7 @@ def plot_cnv_profile(
         raise ValueError("no clone to draw")
 
     seg_df = select_sample(seg_df, sample_id)
-    coords = genome_axis.build_coordinates(seg_df, contain=True)
+    coords = genome_axis.build_coordinates(seg_df, contain=contain)
     states = get_clone_states(seg_df, clones)
     props = get_clone_proportions(seg_df, clones) if show_prop else None
     pi_viol = get_pi_viol(seg_df) if show_pi_viol else None
@@ -537,16 +547,21 @@ def plot_cnv_profile(
         label_fontweight="bold",
         tick_pad=4,
     )
-    return ax
+    if ax_leg is not None:
+        _plot_cnv_legend(
+            ax_leg,
+            has_mirror=mirrored is not None and bool(mirrored.any()),
+            **(legend_kwargs or {}),
+        )
 
 
-def plot_cnv_legend(
+def _plot_cnv_legend(
     ax: plt.Axes,
     has_mirror: bool = True,
     pair_w: float = 2.0,
     pair_h: float = 0.6,
     fontsize: int = 10,
-) -> plt.Axes:
+) -> None:
     """Draw the integer copy-number legend, grouped by total copy number.
 
     Mirrored pairs share a swatch since (1, 2) and (2, 1) share a color; the "/"
@@ -554,14 +569,12 @@ def plot_cnv_legend(
 
     Args:
         ax: Axes to draw on. Its own frame is turned off.
-        has_mirror: Append the mirrored-CNA swatch; pass
-            :func:`has_mirror` to show it only when the data has one.
+        has_mirror: Append the mirrored-CNA swatch. :func:`plot_cnv_profile`
+            passes True only when it actually hatched a mirrored bin.
         pair_w: Width of each swatch.
         pair_h: Height of each swatch.
         fontsize: Swatch label font size.
 
-    Returns:
-        The axes, for chaining.
     """
     state_style, tcn_states = get_cn_colors()
     ax.axis("off")
@@ -626,7 +639,6 @@ def plot_cnv_legend(
     ax.set_xlim(-2.0, leg_x)
     ax.set_ylim(-0.8, pair_h + 0.8)
     ax.set_aspect("auto")
-    return ax
 
 
 # =============================================================================
@@ -640,6 +652,7 @@ def plot_ascn_profile(
     ax: plt.Axes,
     seg_df: pd.DataFrame,
     genome_axis: GenomeAxis,
+    ax_leg: plt.Axes | None = None,
     sample_id: str | None = None,
     normal: str | None = NORMAL_CLONE,
     clones: list | None = None,
@@ -652,8 +665,10 @@ def plot_ascn_profile(
     clone_ploidies: dict | None = None,
     show_mirror: bool = True,
     outline_alleles: bool = True,
+    contain: bool = True,
+    legend_kwargs: dict | None = None,
     rasterized: bool = True,
-) -> plt.Axes:
+) -> None:
     """Draw an allele-specific copy-number profile, two sub-bars per clone.
 
     Legacy. Retained for the HATCHet figures that already use it; not part of the
@@ -672,6 +687,9 @@ def plot_ascn_profile(
             columns, and optional ``u_<clone>`` proportions.
         genome_axis: Genome axis to draw on, built once from the reference and reusable
             across samples and panels. Bins are matched to it by coordinate.
+        ax_leg: Axes for the legend, drawn in place. None omits it. The mirrored
+            swatch appears only when a mirrored bin was actually hatched, so the
+            legend never advertises a state the figure does not contain.
         sample_id: Sample to draw when the table holds several. None takes the
             first one present.
         normal: Name of the normal clone, excluded from the stack. None draws
@@ -689,10 +707,11 @@ def plot_ascn_profile(
             allele is amplified - with chevrons pointing toward the larger
             allele. Same rule as :func:`plot_cnv_profile`.
         outline_alleles: Outline each allele row across the genome.
+        contain: Require a row to lie entirely inside a region to be drawn.
+            Same rule as :func:`plot_cnv_profile`.
+        legend_kwargs: Extra styling forwarded to the legend, ignored without
+            ``ax_leg``.
         rasterized: Rasterize the rectangles.
-
-    Returns:
-        The axes, for chaining.
 
     Raises:
         ValueError: If ``seg_df`` is empty or has no clone left to draw.
@@ -705,7 +724,7 @@ def plot_ascn_profile(
         raise ValueError("no clone to draw")
 
     seg_df = select_sample(seg_df, sample_id)
-    coords = genome_axis.build_coordinates(seg_df, contain=True)
+    coords = genome_axis.build_coordinates(seg_df, contain=contain)
     states = get_clone_states(seg_df, clones)
     props = get_clone_proportions(seg_df, clones) if show_prop else None
 
@@ -808,17 +827,22 @@ def plot_ascn_profile(
         label_fontweight=None,
         tick_pad=20,
     )
-    return ax
+    if ax_leg is not None:
+        _plot_ascn_legend(
+            ax_leg,
+            show_mirror=mirrored is not None and bool(mirrored.any()),
+            **(legend_kwargs or {}),
+        )
 
 
-def plot_ascn_legend(
+def _plot_ascn_legend(
     ax: plt.Axes,
     box_w: float = 1.2,
     box_h: float = 0.4,
     tick_len: float = 0.08,
     label_fontsize: int = 12,
     show_mirror: bool = True,
-) -> plt.Axes:
+) -> None:
     """Draw the allele copy-number legend as a horizontal ramp.
 
     Legacy, paired with :func:`plot_ascn_profile`.
@@ -832,9 +856,9 @@ def plot_ascn_legend(
         tick_len: Length of the tick below each box.
         label_fontsize: Font size for labels and the title.
         show_mirror: Append the mirrored chevron swatch.
+            :func:`plot_ascn_profile` passes True only when it actually drew
+            chevrons.
 
-    Returns:
-        The axes, for chaining.
     """
     state_style, tcn_states = get_ascn_colors()
     boxes = list(tcn_states) + ["7+"]
@@ -914,4 +938,3 @@ def plot_ascn_legend(
     ax.set_xlim(-2.0, right)
     ax.set_ylim(-0.5, box_h + 0.2)
     ax.set_aspect("auto")
-    return ax

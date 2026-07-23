@@ -12,6 +12,7 @@ in :mod:`cnplot.cnplot_io_utils`.
 import logging
 import re
 
+import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -23,7 +24,11 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "CN_PREFIX",
+    "EXP_PREFIX",
     "FigureSaver",
+    "MARKER_SIZE_LARGE",
+    "MARKER_SIZE_SMALL",
+    "MAX_NDOTS",
     "NORMAL_CLONE",
     "PI_VIOL_COL",
     "SAMPLE_COL",
@@ -32,8 +37,13 @@ __all__ = [
     "decorate_genome_axis",
     "draw_chr_boundaries",
     "draw_segment_boundaries",
+    "format_clone_name",
     "get_clone_ylabels",
     "get_transparency",
+    "resolve_colors",
+    "resolve_marker_size",
+    "resolve_ylim",
+    "resolve_ylim_scaled",
     "shade_regions",
 ]
 
@@ -44,9 +54,18 @@ __all__ = [
 
 CN_PREFIX = "cn_"
 U_PREFIX = "u_"
+EXP_PREFIX = "exp_"
 NORMAL_CLONE = "normal"
 PI_VIOL_COL = "PI_VIOL"
 SAMPLE_COL = "SAMPLE"
+
+# Marker sizes for sparse and dense scatters, switched at MAX_NDOTS. The two
+# values are what HATCHet (bulk, 16-22k bins) and Copytyping (pseudobulk, far
+# fewer) each settled on independently; MAX_NDOTS sits between them and matches
+# the n_ref already used by adaptive_dot_size.
+MARKER_SIZE_SMALL = 2.0
+MARKER_SIZE_LARGE = 20.0
+MAX_NDOTS = 5000
 
 
 # =============================================================================
@@ -103,8 +122,10 @@ def draw_segment_boundaries(
 ) -> None:
     """Mark the stretches no whitelist segment covers.
 
-    A collapsed gap gets one dashed line; a gap with width gets two bounding
-    lines and optional shading.
+    A dashed line stands in for width that was removed, so only a collapsed gap
+    gets one. When gaps are kept the missing stretch is already visible as empty
+    axis, and a line there would mark something the reader can see - optionally
+    shade it instead.
 
     Args:
         ax: Axes to draw on.
@@ -115,7 +136,8 @@ def draw_segment_boundaries(
         linewidth: Line width.
         linestyle: Line style.
         alpha: Line opacity.
-        shade: Fill color for gaps with width, or None for lines only.
+        shade: Fill color for gaps that kept their width, or None to leave them
+            blank. Ignored for collapsed gaps, which have nothing to fill.
         shade_alpha: Opacity of the fill.
     """
     gaps = genome_axis.gaps if include_edges else genome_axis.interior_gaps
@@ -128,17 +150,8 @@ def draw_segment_boundaries(
                 linestyle=linestyle,
                 alpha=alpha,
             )
-            continue
-        if shade is not None:
+        elif shade is not None:
             ax.axvspan(gap.start, gap.end, color=shade, alpha=shade_alpha, zorder=0)
-        for x in (gap.start, gap.end):
-            ax.axvline(
-                x,
-                color=color,
-                linewidth=linewidth,
-                linestyle=linestyle,
-                alpha=alpha,
-            )
 
 
 def decorate_genome_axis(
@@ -235,6 +248,29 @@ def shade_regions(
                 )
 
 
+def format_clone_name(name, plot_clone_name: bool = True) -> str:
+    """Render a clone column name for display.
+
+    Shared by every place a clone is named - row labels and proportion legends -
+    so one profile cannot say "Clone 1" while its legend says "clone1".
+
+    Args:
+        name: Clone name as it appears after the ``cn_`` prefix.
+        plot_clone_name: Write "Clone N" rather than a bare "N".
+
+    Returns:
+        "Normal" for the normal clone, "Clone N" for a ``cloneN`` name, and
+        anything else verbatim.
+    """
+    text = str(name)
+    if text == NORMAL_CLONE:
+        return "Normal"
+    m = re.fullmatch(r"clone(\d+)", text)
+    if m:
+        return f"Clone {m.group(1)}" if plot_clone_name else m.group(1)
+    return text
+
+
 def get_clone_ylabels(
     clones: list,
     plot_clone_name: bool = True,
@@ -243,12 +279,12 @@ def get_clone_ylabels(
 ) -> list:
     """Build y-tick labels for a clone-stacked panel.
 
-    Returned top-to-bottom, reversing ``clones``, since the first clone sits at
-    the bottom. A name like "clone2" renders as "Clone 2"; anything else is used
+    Returned bottom-to-top, matching ascending y, so ``clones[0]`` ends up as the
+    top row. A name like "clone2" renders as "Clone 2"; anything else is used
     verbatim. Each optional map adds a line only for the clones it contains.
 
     Args:
-        clones: Clone names in stacking order, bottom row first.
+        clones: Clone names in stacking order, top row first.
         plot_clone_name: Write "Clone N" rather than a bare "N".
         clone_ploidies: Optional {clone: ploidy}, adding a "ploidy X" line.
         clone_props: Optional {clone: proportion} in [0, 1], adding "prop X%".
@@ -258,12 +294,7 @@ def get_clone_ylabels(
     """
     ylabels = []
     for name in reversed(clones):
-        m = re.fullmatch(r"clone(\d+)", str(name))
-        if m:
-            head = f"Clone {m.group(1)}" if plot_clone_name else m.group(1)
-        else:
-            head = str(name)
-        lines = [head]
+        lines = [format_clone_name(name, plot_clone_name)]
         if clone_ploidies is not None and name in clone_ploidies:
             lines.append(f"ploidy {round(clone_ploidies[name], 2)}")
         if clone_props is not None and name in clone_props:
@@ -358,6 +389,168 @@ def adaptive_dot_size(
     if n_points <= 0:
         return float(s_base)
     return float(np.clip(s_base * n_ref / n_points, s_min, s_max))
+
+
+def resolve_marker_size(
+    n_points: int,
+    small: float = MARKER_SIZE_SMALL,
+    large: float = MARKER_SIZE_LARGE,
+    max_ndots: int = MAX_NDOTS,
+) -> float:
+    """Choose a marker size from how many points will be drawn.
+
+    A two-step switch rather than a ramp, so a figure has one of two looks
+    instead of a size that drifts with the data. Resolve it once per figure from
+    the total point count: applied per axes, two rows either side of
+    ``max_ndots`` would differ tenfold. Use :func:`adaptive_dot_size` when a
+    continuous scale is wanted instead.
+
+    Args:
+        n_points: Number of points to be drawn.
+        small: Size at or above ``max_ndots``.
+        large: Size below ``max_ndots``.
+        max_ndots: Switch point.
+
+    Returns:
+        Marker size in points squared.
+    """
+    return float(large) if n_points < max_ndots else float(small)
+
+
+def _finite(*arrays) -> np.ndarray:
+    """Concatenate the finite values of several optional arrays.
+
+    Args:
+        *arrays: Arrays or None, each flattened and filtered.
+
+    Returns:
+        1-D array of every finite value, empty if there are none.
+    """
+    parts = []
+    for arr in arrays:
+        if arr is None:
+            continue
+        flat = np.asarray(arr, dtype=float).ravel()
+        parts.append(flat[np.isfinite(flat)])
+    return np.concatenate(parts) if parts else np.empty(0)
+
+
+def resolve_ylim(
+    values,
+    expected=None,
+    windows=((-2, 2), (-5, 5)),
+) -> tuple:
+    """Pick the tightest preset window holding the data.
+
+    Windows are tried in order, so list them narrowest first; the last is the
+    fallback when nothing fits. Expected values are taken into account so an
+    overlay line cannot fall off the axes.
+
+    Args:
+        values: Observed values; non-finite entries ignored.
+        expected: Expected values to keep visible, or None.
+        windows: Candidate (lo, hi) limits, narrowest first.
+
+    Returns:
+        The first window containing every finite value, else the last one.
+    """
+    vals = _finite(values, expected)
+    if vals.size == 0:
+        return tuple(windows[-1])
+    lo, hi = float(vals.min()), float(vals.max())
+    for window in windows:
+        if lo >= window[0] and hi <= window[1]:
+            return tuple(window)
+    return tuple(windows[-1])
+
+
+def resolve_ylim_scaled(
+    values,
+    expected=None,
+    scale: float = 1.1,
+    min_top: float = 2.0,
+    max_top: float | None = 6.0,
+    floor_frac: float = -0.05,
+) -> tuple:
+    """Derive limits from the data for a ratio-like quantity.
+
+    For values with a meaningful zero and no natural ceiling, e.g. RDR or
+    fractional copy number. The top is the largest value with headroom, held to
+    at least ``min_top`` so a flat diploid profile is not blown up, and capped at
+    ``max_top`` so a few outliers cannot flatten everything else.
+
+    Args:
+        values: Observed values; non-finite entries ignored.
+        expected: Expected values to keep visible, or None.
+        scale: Headroom factor applied to the maximum.
+        min_top: Smallest acceptable top.
+        max_top: Largest acceptable top, or None for uncapped.
+        floor_frac: Bottom as a fraction of the top, giving a little room below
+            zero.
+
+    Returns:
+        (lo, hi) limits.
+    """
+    vals = _finite(values, expected)
+    top = max(float(vals.max()) * scale, min_top) if vals.size else min_top
+    if max_top is not None:
+        top = min(top, max_top)
+    return (floor_frac * top, top)
+
+
+def resolve_colors(
+    n: int,
+    hue=None,
+    palette=None,
+    colors=None,
+    alphas=None,
+    default="steelblue",
+) -> np.ndarray:
+    """Resolve per-point colors to an RGBA array.
+
+    Precedence is ``colors``, then ``hue`` through ``palette``, then ``default``.
+    Doing this up front is what lets the 1D and 2D plots share one coloring: the
+    alternative, reading resolved colors back off a drawn collection, forces one
+    plot to run before the other.
+
+    Args:
+        n: Number of points.
+        hue: (n,) categorical label per point, or None.
+        palette: {label: color} map, or a color sequence taken in order of first
+            appearance in ``hue``. Unmapped labels fall back to ``default``.
+        colors: Explicit color, or one per point. Wins over ``hue``.
+        alphas: (n,) alpha per point, written into the resolved colors, or None.
+        default: Color for points with nothing else to go on.
+
+    Returns:
+        (n, 4) RGBA array.
+
+    Raises:
+        ValueError: If a resolved array does not have one color per point, or if
+            ``hue`` is given without a ``palette``.
+    """
+    if colors is not None:
+        rgba = mcolors.to_rgba_array(colors)
+        if len(rgba) == 1:
+            rgba = np.tile(rgba, (n, 1))
+    elif hue is not None:
+        if palette is None:
+            raise ValueError("hue needs a palette")
+        hue_arr = np.asarray(hue)
+        lut = palette
+        if not isinstance(palette, dict):
+            keys = list(dict.fromkeys(hue_arr.tolist()))
+            lut = dict(zip(keys, palette, strict=False))
+        rgba = mcolors.to_rgba_array([lut.get(h, default) for h in hue_arr.tolist()])
+    else:
+        rgba = np.tile(mcolors.to_rgba_array(default), (n, 1))
+
+    if len(rgba) != n:
+        raise ValueError(f"resolved {len(rgba)} colors for {n} points")
+    if alphas is not None:
+        rgba = rgba.copy()
+        rgba[:, 3] = np.asarray(alphas, dtype=float)
+    return rgba
 
 
 # =============================================================================
