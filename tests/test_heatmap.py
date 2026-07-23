@@ -165,6 +165,41 @@ def test_dist_strip_draws_and_legends(axis, sim):
     plt.close(fig)
 
 
+def test_continuous_strip_draws_without_legend(axis, sim):
+    from matplotlib.colors import Normalize
+
+    cmap, norm, _ = get_baf_cmap()
+    rng = np.random.default_rng(0)
+    purity = rng.random(len(sim.heatmap_labels))
+    # continuous strip closest to the heatmap, then a categorical strip
+    strips = [
+        {
+            "name": "purity",
+            "scalar": purity,
+            "cmap": "magma_r",
+            "norm": Normalize(0, 1),
+        },
+        {"name": "clone", "values": sim.heatmap_labels},
+    ]
+    fig, ax = plt.subplots(figsize=(12, 4))
+    n_before = len(fig.axes)
+    plot_heatmap(
+        ax,
+        sim.heatmap_baf,
+        sim.bins,
+        axis,
+        row_labels=sim.heatmap_labels,
+        cmap=cmap,
+        norm=norm,
+        show_block_labels=False,
+        strips=strips,
+    )
+    # two strip axes, but only the categorical strip carries a legend
+    assert len(fig.axes) == n_before + 2
+    assert len(fig.legends) == 1
+    plt.close(fig)
+
+
 def test_colorbar_adds_axes(axis, sim):
     cmap, norm, _ = get_baf_cmap()
     fig, ax = plt.subplots(figsize=(12, 4))
@@ -219,3 +254,30 @@ def test_plot_heatmap_cnp_page(axis, sim, saved):
     heat_labels = [t.get_text() for t in heatmap_ax.get_xticklabels() if t.get_text()]
     assert prof_labels and heat_labels == []
     saved(fig, "heatmap_cnp_page")
+
+
+def test_plot_heatmap_cnp_ascn_profile(axis, sim):
+    from matplotlib.patches import Rectangle
+
+    cmap, norm, _ = get_baf_cmap()
+    fig = plot_heatmap_cnp(
+        sim.heatmap_baf,
+        sim.bins,
+        axis,
+        sim.seg_ucn,
+        sample_id="S1",
+        row_labels=sim.heatmap_labels,
+        cmap=cmap,
+        norm=norm,
+        profile="ascn",
+    )
+    # allele-specific profile splits each clone into A and B bars: >= 4x segments
+    n_seg = len(sim.seg_ucn[sim.seg_ucn["SAMPLE"] == "S1"])
+    profile_ax = fig.axes[1]
+    rects = [p for p in profile_ax.patches if isinstance(p, Rectangle)]
+    assert len(rects) >= 4 * n_seg
+    plt.close(fig)
+
+    with pytest.raises(ValueError):
+        plot_heatmap_cnp(sim.heatmap_baf, sim.bins, axis, sim.seg_ucn, profile="bad")
+    plt.close("all")

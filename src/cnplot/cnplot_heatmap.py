@@ -235,8 +235,8 @@ def _resolve_strips(strips: list) -> list:
     across strips; the first such strip is the primary.
 
     Args:
-        strips: The strip specs, each a categorical (``values``) or distribution
-            (``matrix``) dict.
+        strips: The strip specs, each a categorical (``values``), distribution
+            (``matrix``), or continuous (``scalar``) dict.
 
     Returns:
         Shallow copies of ``strips`` with ``cmap`` and ``display_name`` set.
@@ -245,7 +245,7 @@ def _resolve_strips(strips: list) -> list:
     missing = {
         s["name"]: s["values"]
         for s in strips
-        if "matrix" not in s and s.get("cmap") is None
+        if "values" in s and s.get("cmap") is None
     }
     if missing:
         from .cnplot_colormap import get_multiclass_cmap
@@ -297,6 +297,31 @@ def _draw_dist_strip(ax: plt.Axes, spec: dict, y_edges: np.ndarray) -> tuple:
     ax.set_xlim(0.0, 1.0)
     props = spec.get("props") or dict.fromkeys(order, 0.0)
     return spec["display_name"], {v: colors[v] for v in order}, props
+
+
+def _draw_cont_strip(ax: plt.Axes, spec: dict, y_edges: np.ndarray) -> None:
+    """Draw a per-row continuous scalar as a colored column, e.g. purity.
+
+    Args:
+        ax: Strip axes to draw on.
+        spec: Continuous spec with ``scalar`` (n_rows,), ``cmap`` (a colormap),
+            and optional ``norm``.
+        y_edges: Row edges from :func:`plot_heatmap`.
+
+    Returns:
+        None - a continuous strip carries no categorical legend.
+    """
+    scalar = np.asarray(spec["scalar"], dtype=float)[:, None]
+    ax.pcolormesh(
+        np.array([0.0, 1.0]),
+        y_edges,
+        scalar,
+        cmap=spec["cmap"],
+        norm=spec.get("norm"),
+        shading="flat",
+        rasterized=True,
+    )
+    return None
 
 
 def _draw_cat_strip(ax: plt.Axes, spec: dict, y_edges: np.ndarray) -> tuple:
@@ -358,15 +383,18 @@ def plot_column_strips(
     """Draw vertical annotation strips left of ``base_ax``, in list order.
 
     Each entry of ``strips`` is one strip, drawn outward from the heatmap in the
-    given order (the first is closest). A spec is one of two kinds, told apart by
-    its keys:
+    given order (the first is closest). A spec is one of three kinds, told apart by
+    its data key:
 
-    - categorical: ``{"name", "values": (n_rows,), "cmap"?, "display_name"?}`` -
-      a solid color per row from the row's value. ``cmap`` may be omitted to
-      auto-color; see :func:`_resolve_strips`.
-    - distribution: ``{"name", "matrix": (n_rows, k), "order": [k cats], "cmap",
-      "props"?, "display_name"?}`` - each row's distribution stacked into a bar,
-      e.g. copy-typing posteriors.
+    - categorical (``values``): ``{"name", "values": (n_rows,), "cmap"?,
+      "display_name"?}`` - a solid color per row from the row's value. ``cmap`` may
+      be omitted to auto-color; see :func:`_resolve_strips`.
+    - distribution (``matrix``): ``{"name", "matrix": (n_rows, k), "order":
+      [k cats], "cmap", "props"?, "display_name"?}`` - each row's distribution
+      stacked into a bar, e.g. copy-typing posteriors.
+    - continuous (``scalar``): ``{"name", "scalar": (n_rows,), "cmap", "norm"?,
+      "display_name"?}`` - a per-row scalar colored through ``cmap`` / ``norm``,
+      e.g. purity. Carries no legend.
 
     Args:
         fig: Figure holding ``base_ax``; strips are added as new axes.
@@ -377,8 +405,9 @@ def plot_column_strips(
         gap: Space between strips in figure fraction.
 
     Returns:
-        [(display_name, {value: color}, {value: fraction})] per strip, in the same
-        order, for :func:`plot_strip_legend`.
+        [(display_name, {value: color}, {value: fraction})], one per strip that
+        carries a legend (categorical and distribution), in order, for
+        :func:`plot_strip_legend`; continuous strips contribute none.
     """
     strips = _resolve_strips(strips)
     fig.canvas.draw()
@@ -389,13 +418,16 @@ def plot_column_strips(
     for spec in strips:
         x_cursor -= strip_width
         ax = fig.add_axes([x_cursor, bbox.y0, strip_width, bbox.height])
-        if "matrix" in spec:
+        if "scalar" in spec:
+            legend = _draw_cont_strip(ax, spec, y_edges)
+        elif "matrix" in spec:
             legend = _draw_dist_strip(ax, spec, y_edges)
         else:
             legend = _draw_cat_strip(ax, spec, y_edges)
         _finish_strip_axis(ax, spec["display_name"], base_ax)
         x_cursor -= gap
-        legends_info.append(legend)
+        if legend is not None:
+            legends_info.append(legend)
     return legends_info
 
 

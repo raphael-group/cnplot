@@ -25,6 +25,7 @@ from .cnplot_heatmap import plot_heatmap
 from .cnplot_intcnp import (
     get_clone_names,
     get_clone_proportions,
+    plot_ascn_profile,
     plot_cnv_profile,
     select_sample,
 )
@@ -354,6 +355,7 @@ def plot_heatmap_cnp(
     height_ratios: tuple = (10, 2, 1.5),
     profile_hspace: float = 0.35,
     top: float = 0.9,
+    profile: str = "cnv",
     profile_kwargs: dict | None = None,
     **heatmap_kwargs,
 ) -> plt.Figure:
@@ -381,8 +383,10 @@ def plot_heatmap_cnp(
             the chromosome labels drawn on top of the profile.
         top: Top of the axes block in figure fraction; the space above holds the
             title.
-        profile_kwargs: Extra arguments for
-            :func:`~cnplot.cnplot_intcnp.plot_cnv_profile`. ``plot_chrname``
+        profile: "cnv" draws the joint integer-CN profile
+            (:func:`~cnplot.cnplot_intcnp.plot_cnv_profile`); "ascn" draws the
+            allele-specific profile (:func:`plot_ascn_profile`).
+        profile_kwargs: Extra arguments for the profile function. ``plot_chrname``
             defaults on so the profile carries the chromosome labels.
         **heatmap_kwargs: Passed to :func:`~cnplot.cnplot_heatmap.plot_heatmap`;
             ``show_colorbar`` and hidden block labels default on for the page, and
@@ -390,12 +394,18 @@ def plot_heatmap_cnp(
 
     Returns:
         The figure. The caller saves and closes it.
+
+    Raises:
+        ValueError: If ``profile`` is not "cnv" or "ascn".
     """
+    if profile not in ("cnv", "ascn"):
+        raise ValueError("profile must be 'cnv' or 'ascn'")
     heatmap_kwargs.setdefault("show_colorbar", True)
     heatmap_kwargs.setdefault("show_block_labels", False)
     heatmap_kwargs["plot_chrname"] = False
     profile_kwargs = dict(profile_kwargs or {})
     profile_kwargs.setdefault("plot_chrname", True)
+    draw_profile = plot_cnv_profile if profile == "cnv" else plot_ascn_profile
 
     fig, axes = plt.subplots(
         3, 1, figsize=figsize, gridspec_kw={"height_ratios": list(height_ratios)}
@@ -403,7 +413,7 @@ def plot_heatmap_cnp(
     fig.subplots_adjust(top=top, hspace=profile_hspace)
 
     plot_heatmap(axes[0], matrix, coords_df, genome_axis, **heatmap_kwargs)
-    plot_cnv_profile(
+    draw_profile(
         axes[1],
         seg_df,
         genome_axis,

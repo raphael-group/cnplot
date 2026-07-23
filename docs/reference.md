@@ -95,16 +95,22 @@ landmark coordinates.
 ### Strip specs (entries of `strips`)
 
 A categorical strip colors each row by its value; a distribution strip stacks each
-row's distribution (e.g. copy-typing posteriors) into a bar. The kind is told apart
-by the keys: `values` marks categorical, `matrix` marks distribution.
+row's distribution (e.g. copy-typing posteriors) into a bar; a continuous strip colors
+each row by a scalar (e.g. purity). The kind is told apart by the data key: `values`
+marks categorical, `matrix` distribution, `scalar` continuous.
 
 | Key | Kind | Required | Type | Description |
 |---|---|---|---|---|
-| `name` | both | Yes | str | Strip key; also the default legend title and shared-palette identity. |
-| `display_name` | both | No | str | Title shown on the strip and legend; defaults to `name`. |
+| `name` | all | Yes | str | Strip key; also the default legend title and shared-palette identity. |
+| `display_name` | all | No | str | Title shown on the strip and legend; defaults to `name`. |
 | `values` | categorical | Yes | ndarray | `(n_rows,)` value per row. |
 | `cmap` | categorical | No | dict | `{value: color}`; auto-built (shared across strips) when omitted. |
 | `matrix` | distribution | Yes | ndarray | `(n_rows, len(order))` per-row distribution, rows summing to 1. |
 | `order` | distribution | Yes | list | Column order of `matrix`, i.e. the stacked categories. |
 | `cmap` | distribution | Yes | dict | `{category: color}` for the stacked bars. |
 | `props` | distribution | No | dict | `{category: fraction}` for the strip's legend. |
+| `scalar` | continuous | Yes | ndarray | `(n_rows,)` scalar per row. |
+| `cmap` | continuous | Yes | Colormap | Colormap (name or object) for the scalar. |
+| `norm` | continuous | No | Normalize | Scalar normalization; matplotlib autoscales when omitted. |
+
+Continuous strips carry no legend.
