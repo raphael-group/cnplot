@@ -25,5 +25,8 @@ venv/
 *.png
 *.svg
 
+# except the committed README gallery images
+!examples/*.png
+
 # Scratch output from test renders
 .tmp/
