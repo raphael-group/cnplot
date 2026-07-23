@@ -20,6 +20,7 @@ import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from matplotlib.cm import ScalarMappable
 from matplotlib.patches import Patch, Rectangle
 
 from .cnplot_genome_axis import GenomeAxis
@@ -299,17 +300,20 @@ def _draw_dist_strip(ax: plt.Axes, spec: dict, y_edges: np.ndarray) -> tuple:
     return spec["display_name"], {v: colors[v] for v in order}, props
 
 
-def _draw_cont_strip(ax: plt.Axes, spec: dict, y_edges: np.ndarray) -> None:
+def _draw_cont_strip(ax: plt.Axes, spec: dict, y_edges: np.ndarray):
     """Draw a per-row continuous scalar as a colored column, e.g. purity.
 
     Args:
         ax: Strip axes to draw on.
         spec: Continuous spec with ``scalar`` (n_rows,), ``cmap`` (a colormap),
-            and optional ``norm``.
+            optional ``norm``, and optional ``show_cbar`` / ``cbar_ticks`` to
+            request a colorbar in the legend column.
         y_edges: Row edges from :func:`plot_heatmap`.
 
     Returns:
-        None - a continuous strip carries no categorical legend.
+        A ``(display_name, {"__cbar__": (cmap, norm, ticks)}, {})`` legend entry
+        when ``show_cbar`` is set, drawn as a colorbar by
+        :func:`plot_strip_legend`; None otherwise.
     """
     scalar = np.asarray(spec["scalar"], dtype=float)[:, None]
     ax.pcolormesh(
@@ -321,6 +325,9 @@ def _draw_cont_strip(ax: plt.Axes, spec: dict, y_edges: np.ndarray) -> None:
         shading="flat",
         rasterized=True,
     )
+    if spec.get("show_cbar"):
+        cbar = (spec["cmap"], spec.get("norm"), spec.get("cbar_ticks"))
+        return spec["display_name"], {"__cbar__": cbar}, {}
     return None
 
 
@@ -393,8 +400,9 @@ def plot_column_strips(
       [k cats], "cmap", "props"?, "display_name"?}`` - each row's distribution
       stacked into a bar, e.g. copy-typing posteriors.
     - continuous (``scalar``): ``{"name", "scalar": (n_rows,), "cmap", "norm"?,
-      "display_name"?}`` - a per-row scalar colored through ``cmap`` / ``norm``,
-      e.g. purity. Carries no legend.
+      "display_name"?, "show_cbar"?, "cbar_ticks"?}`` - a per-row scalar colored
+      through ``cmap`` / ``norm``, e.g. purity. Carries no legend unless
+      ``show_cbar`` is set, which draws a colorbar in the legend column.
 
     Args:
         fig: Figure holding ``base_ax``; strips are added as new axes.
@@ -456,6 +464,20 @@ def plot_strip_legend(
     bbox = base_ax.get_position()
     y_top = bbox.y1
     for name, color_dict, prop_dict in legends_info:
+        # a continuous strip contributes a horizontal colorbar, not a swatch legend
+        if "__cbar__" in color_dict:
+            cmap, norm, ticks = color_dict["__cbar__"]
+            cbar_w, cbar_h = 0.1, 0.012
+            cax = fig.add_axes([x0, y_top - entry_h, cbar_w, cbar_h])
+            sm = ScalarMappable(norm=norm, cmap=cmap)
+            sm.set_array([])
+            cbar = fig.colorbar(sm, cax=cax, orientation="horizontal")
+            if ticks is not None:
+                cbar.set_ticks(ticks)
+            cax.tick_params(labelsize=9)
+            cax.set_title(name, fontsize=13, fontweight="bold", pad=4)
+            y_top -= entry_h * 2.5 + gap
+            continue
         handles = [
             Patch(facecolor=col, label=f"{v}: {prop_dict.get(v, 0.0) * 100:.2f}%")
             for v, col in color_dict.items()

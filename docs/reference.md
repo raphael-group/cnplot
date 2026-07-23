@@ -112,5 +112,7 @@ marks categorical, `matrix` distribution, `scalar` continuous.
 | `scalar` | continuous | Yes | ndarray | `(n_rows,)` scalar per row. |
 | `cmap` | continuous | Yes | Colormap | Colormap (name or object) for the scalar. |
 | `norm` | continuous | No | Normalize | Scalar normalization; matplotlib autoscales when omitted. |
+| `show_cbar` | continuous | No | bool | Draw a colorbar for the scalar in the legend column (default off). |
+| `cbar_ticks` | continuous | No | list | Explicit colorbar ticks when `show_cbar` is set. |
 
-Continuous strips carry no legend.
+Continuous strips carry no legend unless `show_cbar` is set (then a colorbar).

@@ -7,7 +7,7 @@ their modules.
 """
 
 from .cnplot_1d import plot_scatter_1d
-from .cnplot_2d import get_landmarks, plot_scatter_2d
+from .cnplot_2d import annotate_landmarks, get_landmarks, plot_scatter_2d
 from .cnplot_colormap import (
     BAF_COLORS,
     CELLTYPE_CMAP,
@@ -19,6 +19,7 @@ from .cnplot_colormap import (
     PURITY_CMAP,
     get_ascn_cmap,
     get_baf_cmap,
+    get_categorical_cmap,
     get_cn_cmap,
     get_log2rdr_cmap,
     get_mixcn_cmap,
@@ -95,12 +96,14 @@ __all__ = [
     "Segment",
     "__version__",
     "adaptive_dot_size",
+    "annotate_landmarks",
     "decorate_genome_axis",
     "draw_chr_boundaries",
     "draw_segment_boundaries",
     "format_clone_name",
     "get_ascn_cmap",
     "get_baf_cmap",
+    "get_categorical_cmap",
     "get_clone_ylabels",
     "get_cn_cmap",
     "get_landmarks",

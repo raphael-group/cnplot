@@ -8,6 +8,7 @@ from cnplot import (
     MARKER_SIZE_SMALL,
     format_clone_name,
     get_baf_cmap,
+    get_categorical_cmap,
     get_cn_cmap,
     get_log2rdr_cmap,
     get_multiclass_cmap,
@@ -79,3 +80,14 @@ def test_label_cmaps_cover_every_value(sim):
     row_labels = sim.heatmap_labels
     maps = get_multiclass_cmap({"clone": row_labels}, primary_label="clone")
     assert set(maps["clone"]) >= set(np.unique(row_labels).astype(str))
+
+
+def test_get_categorical_cmap():
+    cmap = get_categorical_cmap(["d1", "d2", "NA", "d1"], "Set1")
+    assert cmap["NA"] == "darkgray"
+    assert cmap["d1"] != cmap["d2"] and cmap["d1"] != "darkgray"
+    assert set(cmap) == {"d1", "d2", "NA"}
+    # single-label maps are self-contained; normal-like -> normal gray
+    clones = get_categorical_cmap(["normal", "clone1", "clone2"], "tab10")
+    assert clones["normal"] == "lightgray"
+    assert clones["clone1"] != clones["clone2"]

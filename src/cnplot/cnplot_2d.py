@@ -40,6 +40,7 @@ logging.getLogger("adjustText").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "annotate_landmarks",
     "get_landmarks",
     "plot_scatter_2d",
 ]
@@ -93,7 +94,7 @@ def _state_label(states: np.ndarray) -> tuple:
     return ",".join(seen), len(seen) == 1
 
 
-def _annotate_landmarks(
+def annotate_landmarks(
     ax: plt.Axes,
     landmarks: list,
     markersize: float = 30,
@@ -381,7 +382,7 @@ def plot_scatter_2d(
             group_col=group_col,
             display_min_clone_prop=display_min_clone_prop,
         )
-        _annotate_landmarks(grid.ax_joint, landmarks, markersize=landmark_size)
+        annotate_landmarks(grid.ax_joint, landmarks, markersize=landmark_size)
 
         if show_props:
             sub = select_sample(expected_df, group, col=group_col)

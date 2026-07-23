@@ -31,6 +31,7 @@ __all__ = [
     "PURITY_CMAP",
     "get_ascn_cmap",
     "get_baf_cmap",
+    "get_categorical_cmap",
     "get_cn_cmap",
     "get_log2rdr_cmap",
     "get_mixcn_cmap",
@@ -466,6 +467,44 @@ def get_multiclass_cmap(
                 cmap[c] = value_color[c]
         cmaps[name] = cmap
     return cmaps
+
+
+def get_categorical_cmap(categories, cmap_name: str, na_labels=NA_LABELS) -> dict:
+    """Build a {category: color} map for one categorical label from a named cmap.
+
+    Self-contained per label, kept distinct from the shared clone palette: missing
+    labels take the neutral gray, normal-like the normal gray, and the remaining
+    categories cycle the named qualitative colormap in sorted order. Coloring one
+    label at a time this way subsumes the old clone-indexed color list - pass the
+    full set of categories and index the returned map.
+
+    Args:
+        categories: The label values; distinct values are colored.
+        cmap_name: Named matplotlib qualitative colormap, e.g. "Set1" or "tab10".
+        na_labels: Labels drawn in the missing-data gray.
+
+    Returns:
+        A {category: color} map covering every distinct value in ``categories``.
+    """
+    cats = sorted({str(v) for v in categories})
+    cmap = plt.get_cmap(cmap_name)
+    listed = getattr(cmap, "colors", None)
+    if listed is not None:
+        palette = [mcolors.to_hex(c) for c in listed]
+    else:
+        n = max(len(cats), 1)
+        palette = [mcolors.to_hex(cmap(i / n)) for i in range(n)]
+    color_map = {}
+    j = 0
+    for c in cats:
+        if c in na_labels:
+            color_map[c] = NA_COLOR
+        elif _is_normal_like(c):
+            color_map[c] = NORMAL_COLOR
+        else:
+            color_map[c] = palette[j % len(palette)]
+            j += 1
+    return color_map
 
 
 # =============================================================================

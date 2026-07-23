@@ -200,6 +200,41 @@ def test_continuous_strip_draws_without_legend(axis, sim):
     plt.close(fig)
 
 
+def test_continuous_strip_colorbar(axis, sim):
+    from matplotlib.colors import Normalize
+
+    cmap, norm, _ = get_baf_cmap()
+    rng = np.random.default_rng(0)
+    purity = rng.random(len(sim.heatmap_labels))
+    strips = [
+        {
+            "name": "purity",
+            "scalar": purity,
+            "cmap": "magma_r",
+            "norm": Normalize(0, 1),
+            "show_cbar": True,
+            "cbar_ticks": [0, 0.5, 1],
+        },
+    ]
+    fig, ax = plt.subplots(figsize=(12, 4))
+    n_before = len(fig.axes)
+    plot_heatmap(
+        ax,
+        sim.heatmap_baf,
+        sim.bins,
+        axis,
+        row_labels=sim.heatmap_labels,
+        cmap=cmap,
+        norm=norm,
+        show_block_labels=False,
+        strips=strips,
+    )
+    # the strip axes + its colorbar axes; no swatch legend
+    assert len(fig.axes) == n_before + 2
+    assert len(fig.legends) == 0
+    plt.close(fig)
+
+
 def test_colorbar_adds_axes(axis, sim):
     cmap, norm, _ = get_baf_cmap()
     fig, ax = plt.subplots(figsize=(12, 4))
