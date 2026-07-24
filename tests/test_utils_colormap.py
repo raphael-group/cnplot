@@ -6,7 +6,6 @@ import numpy as np
 from cnplot import (
     MARKER_SIZE_LARGE,
     MARKER_SIZE_SMALL,
-    format_clone_name,
     get_baf_cmap,
     get_categorical_cmap,
     get_cn_cmap,
@@ -55,13 +54,6 @@ def test_resolve_colors_hue_and_alpha():
 def test_resolve_colors_unmapped_falls_back():
     out = resolve_colors(1, hue=["z"], palette={}, default="steelblue")
     assert np.allclose(out[0], mcolors.to_rgba("steelblue"))
-
-
-def test_format_clone_name():
-    assert format_clone_name("normal") == "Normal"
-    assert format_clone_name("clone2") == "Clone 2"
-    assert format_clone_name("clone2", plot_clone_name=False) == "2"
-    assert format_clone_name("T_cell") == "T_cell"
 
 
 def test_baf_cmap_builds():

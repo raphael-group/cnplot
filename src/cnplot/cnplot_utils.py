@@ -10,7 +10,6 @@ in :mod:`cnplot.cnplot_io_utils`.
 """
 
 import logging
-import re
 
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
@@ -37,7 +36,6 @@ __all__ = [
     "decorate_genome_axis",
     "draw_chr_boundaries",
     "draw_segment_boundaries",
-    "format_clone_name",
     "get_clone_ylabels",
     "get_transparency",
     "resolve_colors",
@@ -248,44 +246,19 @@ def shade_regions(
                 )
 
 
-def format_clone_name(name, plot_clone_name: bool = True) -> str:
-    """Render a clone column name for display.
-
-    Shared by every place a clone is named - row labels and proportion legends -
-    so one profile cannot say "Clone 1" while its legend says "clone1".
-
-    Args:
-        name: Clone name as it appears after the ``cn_`` prefix.
-        plot_clone_name: Write "Clone N" rather than a bare "N".
-
-    Returns:
-        "Normal" for the normal clone, "Clone N" for a ``cloneN`` name, and
-        anything else verbatim.
-    """
-    text = str(name)
-    if text == NORMAL_CLONE:
-        return "Normal"
-    m = re.fullmatch(r"clone(\d+)", text)
-    if m:
-        return f"Clone {m.group(1)}" if plot_clone_name else m.group(1)
-    return text
-
-
 def get_clone_ylabels(
     clones: list,
-    plot_clone_name: bool = True,
     clone_ploidies: dict | None = None,
     clone_props: dict | None = None,
 ) -> list:
     """Build y-tick labels for a clone-stacked panel.
 
     Returned bottom-to-top, matching ascending y, so ``clones[0]`` ends up as the
-    top row. A name like "clone2" renders as "Clone 2"; anything else is used
-    verbatim. Each optional map adds a line only for the clones it contains.
+    top row. Clone names are used verbatim. Each optional map adds a line only for
+    the clones it contains.
 
     Args:
         clones: Clone names in stacking order, top row first.
-        plot_clone_name: Write "Clone N" rather than a bare "N".
         clone_ploidies: Optional {clone: ploidy}, adding a "ploidy X" line.
         clone_props: Optional {clone: proportion} in [0, 1], adding "prop X%".
 
@@ -294,7 +267,7 @@ def get_clone_ylabels(
     """
     ylabels = []
     for name in reversed(clones):
-        lines = [format_clone_name(name, plot_clone_name)]
+        lines = [str(name)]
         if clone_ploidies is not None and name in clone_ploidies:
             lines.append(f"ploidy {round(clone_ploidies[name], 2)}")
         if clone_props is not None and name in clone_props:

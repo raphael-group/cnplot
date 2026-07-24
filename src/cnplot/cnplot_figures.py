@@ -32,7 +32,6 @@ from .cnplot_intcnp import (
 from .cnplot_utils import (
     NORMAL_CLONE,
     SAMPLE_COL,
-    format_clone_name,
     resolve_marker_size,
 )
 
@@ -76,7 +75,7 @@ def _draw_prop_legend(
     names = ([normal_clone] if normal_clone else []) + tumor
     props = get_clone_proportions(sub, names)
     handles = [
-        Line2D([0], [0], alpha=0, label=f"{format_clone_name(n)}: {p:.3f}")
+        Line2D([0], [0], alpha=0, label=f"{n}: {p * 100:.2f}%")
         for n, p in props.items()
         if n == normal_clone
         or display_min_clone_prop is None

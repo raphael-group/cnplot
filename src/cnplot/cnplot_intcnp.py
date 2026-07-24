@@ -87,7 +87,6 @@ def _finish_clone_axis(
     plot_chrname: bool,
     clone_ploidies: dict | None,
     clone_props: dict | None,
-    show_clone_name: bool,
     ylabel: str | None,
     title: str | None,
     label_fontweight: str | None,
@@ -103,7 +102,6 @@ def _finish_clone_axis(
         plot_chrname: Draw chromosome labels along the top.
         clone_ploidies: Optional {clone: ploidy} map.
         clone_props: Optional {clone: proportion} map.
-        show_clone_name: Write "Clone N" rather than a bare "N".
         ylabel: Optional y-axis label.
         title: Optional axes title.
         label_fontweight: Font weight for clone labels, or None for default.
@@ -118,7 +116,6 @@ def _finish_clone_axis(
     ax.set_yticks([h * (i + 0.5) for i in range(num_clones)])
     labels = get_clone_ylabels(
         clones,
-        plot_clone_name=show_clone_name,
         clone_ploidies=clone_ploidies,
         clone_props=clone_props,
     )
@@ -402,7 +399,6 @@ def plot_cnv_profile(
     title: str | None = None,
     ylabel: str | None = None,
     plot_chrname: bool = True,
-    show_clone_name: bool = True,
     show_prop: bool = False,
     show_pi_viol: bool = True,
     clone_ploidies: dict | None = None,
@@ -438,7 +434,6 @@ def plot_cnv_profile(
         title: Optional axes title.
         ylabel: Optional y-axis label.
         plot_chrname: Draw chromosome labels along the top.
-        show_clone_name: Write "Clone N" rather than a bare "N".
         show_prop: Add each clone's proportion to its row label when the table
             carries ``u_<clone>`` columns.
         show_pi_viol: Draw the ``PI_VIOL`` overlay when the column is present:
@@ -541,7 +536,6 @@ def plot_cnv_profile(
         plot_chrname,
         clone_ploidies,
         props,
-        show_clone_name,
         ylabel,
         title,
         label_fontweight="bold",
@@ -660,7 +654,6 @@ def plot_ascn_profile(
     title: str | None = None,
     ylabel: str | None = None,
     plot_chrname: bool = True,
-    show_clone_name: bool = True,
     show_prop: bool = False,
     clone_ploidies: dict | None = None,
     show_mirror: bool = True,
@@ -700,7 +693,6 @@ def plot_ascn_profile(
         title: Optional axes title.
         ylabel: Optional y-axis label.
         plot_chrname: Draw chromosome labels along the top.
-        show_clone_name: Write "Clone N" rather than a bare "N".
         show_prop: Add each clone's proportion to its row label.
         clone_ploidies: Optional {clone: ploidy} map for the row labels.
         show_mirror: Mark mirrored bins - those whose clones disagree on which
@@ -821,7 +813,6 @@ def plot_ascn_profile(
         plot_chrname,
         clone_ploidies,
         props,
-        show_clone_name,
         ylabel,
         title,
         label_fontweight=None,
