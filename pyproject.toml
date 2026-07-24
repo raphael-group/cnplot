@@ -24,11 +24,11 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Visualization",
 ]
 dependencies = [
-    "numpy",
-    "pandas",
-    "matplotlib",
-    "seaborn",
-    "adjustText",
+    "numpy>=1.22",
+    "pandas>=1.5",
+    "matplotlib>=3.6",
+    "seaborn>=0.12",
+    "adjustText>=0.8",
 ]
 
 [project.optional-dependencies]
