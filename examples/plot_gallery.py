@@ -21,6 +21,7 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "tests"))
@@ -37,7 +38,7 @@ from cnplot import (  # noqa: E402
     plot_scatter_1d_multisample,
     plot_scatter_2d,
 )
-from simulate import reference, simulate  # noqa: E402
+from simulate import CELL_POSTERIORS, load_dataset, reference  # noqa: E402
 
 
 def save(fig, name):
@@ -52,7 +53,7 @@ def suptitle(fig, text, y=1.0):
 
 
 genome_axis = GenomeAxis(*reference())
-sim = simulate(seed=0, samples=["S1", "S2"])
+sim = load_dataset(["S1", "S2"])
 
 # color scatter points by the joint CNP, so a subclonal segment stays distinct
 # from a clonal one at the same total copy number
@@ -102,23 +103,16 @@ suptitle(grid.figure, "RDR vs BAF joint scatter", y=1.0)
 save(grid.figure, "scatter_2d")
 
 # 4. allele-specific fractional copy number: FCN-A major, FCN-B minor mirrored
-obs_ab = sim.obs.copy()
-obs_ab["FCN-A"] = 2 * obs_ab["RD"] * (1 - obs_ab["BAF"])
-obs_ab["FCN-B"] = 2 * obs_ab["RD"] * obs_ab["BAF"]
-exp_ab = sim.expected_1d[["#CHR", "START", "END"]].copy()
-for s in sim.samples:
-    rd, baf = sim.expected_1d[f"exp_RD_{s}"], sim.expected_1d[f"exp_BAF_{s}"]
-    exp_ab[f"exp_FCN-A_{s}"] = 2 * rd * (1 - baf)
-    exp_ab[f"exp_FCN-B_{s}"] = 2 * rd * baf
+# (FCN-A / FCN-B and their exp_ overlays are carried by the bbc.ucn / expected_1d)
 rows_ab = [
     make_row_spec("FCN-A", ylabel="FCN-A", ylim=(0, 3.5), href=1.0),
     make_row_spec("FCN-B", ylabel="FCN-B", ylim=(0, 3.5), href=1.0, reverse_y=True),
 ]
 fig = plot_scatter_1d_multisample(
-    obs_ab,
+    sim.obs,
     genome_axis,
     rows_ab,
-    expected_df=exp_ab,
+    expected_df=sim.expected_1d,
     hue="cnp",
     palette=palette,
     seg_df=sim.seg_ucn,
@@ -127,16 +121,13 @@ suptitle(fig, "Allele-specific fractional copy number (FCN-A / FCN-B)", y=1.0)
 save(fig, "fcn_ab")
 
 # 5 & 6. single-cell heatmap page: mesh + colorbar + strips + CN profile + legend
-celltype = np.where(sim.heatmap_labels == "normal", "normal", "tumor")
-clone_cmap = get_multiclass_cmap({"clone": sim.heatmap_labels}, "clone")["clone"]
+cells = pd.read_table(CELL_POSTERIORS)
+cell_labels = cells["clone"].to_numpy()
+celltype = np.where(cell_labels == "normal", "normal", "tumor")
+clone_cmap = get_multiclass_cmap({"clone": cell_labels}, "clone")["clone"]
 order = list(clone_cmap)
-rng = np.random.default_rng(1)
-post = np.zeros((len(sim.heatmap_labels), len(order)))
-for i, lab in enumerate(sim.heatmap_labels):
-    p = rng.dirichlet([1.0] * len(order))
-    p[order.index(lab)] += 2.0
-    post[i] = p / p.sum()
-post_prop = {v: float((sim.heatmap_labels == v).mean()) for v in order}
+post = cells[order].to_numpy()
+post_prop = {v: float((cell_labels == v).mean()) for v in order}
 # posterior distribution strip closest to the heatmap, then a categorical strip
 strips = [
     {

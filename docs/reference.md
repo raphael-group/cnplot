@@ -1,4 +1,4 @@
-# Input / Output Reference
+# Reference
 
 ---
 

@@ -14,8 +14,9 @@
 #   bed, sizes = reference()        # vendored T2T region BED + chrom sizes
 #
 # Inputs (vendored under tests/data/)
-#   sample.seg.ucn.tsv        HATCHet seg.ucn: 69 segments over 22 autosomes,
-#                             normal + clone1 + clone2, states 1|0..2|2.
+#   profile.seg.ucn.tsv       HATCHet seg.ucn: 69 segments over 22 autosomes,
+#                             normal + clone1 + clone2, states 1|0..2|2. Ground
+#                             truth the S1/S2 fixtures are recast from.
 #   T2T-CHM13v2.0.regions.bed arm-level whitelist the profile was called against.
 #   T2T-CHM13v2.0.sizes       chromosome lengths.
 # Parameters
@@ -40,7 +41,16 @@ import pandas as pd
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 REGION_BED = os.path.join(DATA_DIR, "T2T-CHM13v2.0.regions.bed")
 CHROM_SIZES = os.path.join(DATA_DIR, "T2T-CHM13v2.0.sizes")
-SEG_UCN = os.path.join(DATA_DIR, "sample.seg.ucn.tsv")
+SEG_UCN = os.path.join(DATA_DIR, "profile.seg.ucn.tsv")
+
+# Materialized fixture files (written by write_dataset, read by load_dataset).
+SEG_FIXTURE = os.path.join(DATA_DIR, "sample.seg.ucn.tsv")
+BBC_UCN = os.path.join(DATA_DIR, "sample.bbc.ucn.tsv")
+EXPECTED_1D = os.path.join(DATA_DIR, "sample.expected1d.tsv")
+EXPECTED_2D = os.path.join(DATA_DIR, "sample.expected2d.tsv")
+HEATMAP_RDR = os.path.join(DATA_DIR, "heatmap.rdr.tsv.gz")
+HEATMAP_BAF = os.path.join(DATA_DIR, "heatmap.baf.tsv.gz")
+CELL_POSTERIORS = os.path.join(DATA_DIR, "cell_posteriors.tsv")
 
 BIN_SIZE = 2_000_000
 SIGMA_RDR = 0.12
@@ -56,13 +66,16 @@ class Sim:
         bins: Bin table with "#CHR", "START", "END", one row per bin.
         seg_ucn: seg.ucn profile: "SAMPLE", "#CHR/START/END", ``cn_<clone>``,
             ``u_<clone>``, and a "PI_VIOL" flag. One block per sample.
-        obs: Per-bin observations for the scatter plots: the bin columns plus
-            "SAMPLE", "RD", "BAF", "log2RDR", "state" (dominant clone's ``a|b``),
-            "cnp" (joint ``;``-joined CNP over all clones, for
-            :func:`~cnplot.cnplot_colormap.get_mixcn_cmap`), "CLUSTER"
-            (segment id), and "pass_qc".
+        obs: Per-bin bbc.ucn observations for the scatter plots: the bin columns
+            plus "SAMPLE", "RD", "BAF", "FCN-A" / "FCN-B" (allele-specific
+            fractional CN), "log2RDR", "state" (dominant clone's ``a|b``),
+            ``cn_<clone>`` / ``u_<clone>`` per clone, "cnp" (joint ``;``-joined
+            CNP, derived from the ``cn_<clone>`` columns for
+            :func:`~cnplot.cnplot_colormap.get_mixcn_cmap`), "CLUSTER" (segment
+            id), and "pass_qc".
         expected_1d: Segment-resolution expected values, "#CHR/START/END" plus
-            one ``exp_RD_<sample>`` / ``exp_BAF_<sample>`` column per sample.
+            ``exp_RD_<sample>`` / ``exp_BAF_<sample>`` and
+            ``exp_FCN-A_<sample>`` / ``exp_FCN-B_<sample>`` per sample.
         expected_2d: seg.ucn layout plus per-row "exp_BAF" / "exp_RD" landmark
             coordinates.
         clones: Clone names, normal first.
@@ -215,17 +228,19 @@ def simulate(seed: int = 0, samples: list | None = None) -> Sim:
         df["SAMPLE"] = sample
         df["RD"] = np.clip(rd_bin + rng.normal(0, SIGMA_RDR, len(df)), 0, None)
         df["BAF"] = np.clip(baf_bin + rng.normal(0, SIGMA_BAF, len(df)), 0, 1)
+        # allele-specific fractional copy numbers (RD is diploid-relative here)
+        df["FCN-A"] = 2 * df["RD"] * (1 - df["BAF"])
+        df["FCN-B"] = 2 * df["RD"] * df["BAF"]
         df["log2RDR"] = np.log2(np.maximum(df["RD"], 1e-6))
         df["state"] = [f"{states[s, dom_k, 0]}|{states[s, dom_k, 1]}" for s in seg_idx]
-        # joint CNP string over all clones, for get_mixcn_cmap (keeps a
-        # subclonal segment distinct from a clonal one at the same total CN)
-        cnp_by_seg = [
-            ";".join(
-                f"{states[si, k, 0]}|{states[si, k, 1]}" for k in range(len(clones))
-            )
-            for si in range(len(profile))
-        ]
-        df["cnp"] = [cnp_by_seg[s] for s in seg_idx]
+        # per-clone integer CN and this sample's proportion, one column each
+        for k, c in enumerate(clones):
+            df[f"cn_{c}"] = [f"{states[s, k, 0]}|{states[s, k, 1]}" for s in seg_idx]
+            df[f"u_{c}"] = props_by_sample[sample][c]
+        # joint CNP string over all clones, derived from the cn_<clone> columns
+        # (for get_mixcn_cmap; keeps a subclonal segment distinct from a clonal
+        # one at the same total CN)
+        df["cnp"] = df[[f"cn_{c}" for c in clones]].agg(";".join, axis=1)
         df["CLUSTER"] = seg_idx
         df["pass_qc"] = rng.random(len(df)) > 0.15
         obs_blocks.append(df)
@@ -249,6 +264,8 @@ def simulate(seed: int = 0, samples: list | None = None) -> Sim:
         rd_s, baf_s = _mixture(states, p)
         exp1d[f"exp_RD_{sample}"] = rd_s
         exp1d[f"exp_BAF_{sample}"] = baf_s
+        exp1d[f"exp_FCN-A_{sample}"] = 2 * rd_s * (1 - baf_s)
+        exp1d[f"exp_FCN-B_{sample}"] = 2 * rd_s * baf_s
     seg_ucn = pd.concat(seg_blocks, ignore_index=True)
 
     expected_2d = seg_ucn.copy()
@@ -298,6 +315,112 @@ def simulate(seed: int = 0, samples: list | None = None) -> Sim:
     )
 
 
+def _cell_posteriors(labels: np.ndarray, clones: list, seed: int = 1) -> pd.DataFrame:
+    """Per-cell display posterior peaked at each cell's true clone.
+
+    Args:
+        labels: (n_cells,) clone label per cell.
+        clones: Clone order for the posterior columns.
+        seed: Seed for the Dirichlet draws.
+
+    Returns:
+        A table with a "clone" label column and one posterior column per clone,
+        named by the clone.
+    """
+    rng = np.random.default_rng(seed)
+    post = np.zeros((len(labels), len(clones)))
+    for i, lab in enumerate(labels):
+        p = rng.dirichlet([1.0] * len(clones))
+        p[clones.index(lab)] += 2.0
+        post[i] = p / p.sum()
+    out = pd.DataFrame({"clone": labels})
+    for j, c in enumerate(clones):
+        out[c] = post[:, j]
+    return out
+
+
+def _lead(df: pd.DataFrame, lead: list) -> pd.DataFrame:
+    """Reorder columns so ``lead`` comes first, keeping the rest in place."""
+    return df[lead + [c for c in df.columns if c not in lead]]
+
+
+def write_dataset(samples: tuple = ("S1", "S2"), seed: int = 0) -> None:
+    """Materialize the S1/S2 fixture into ``tests/data`` as loadable TSV files.
+
+    Writes ``sample.seg.ucn.tsv`` (#CHR/START/END before SAMPLE), the
+    ``sample.bbc.ucn.tsv`` bins (the derived ``cnp`` column dropped, since a
+    consumer rebuilds it from ``cn_<clone>``), the 1D/2D expected overlays, and
+    the single-cell heatmap matrices plus a per-cell label + display posterior.
+
+    Args:
+        samples: Sample ids for the multi-sample tables.
+        seed: Seed passed to :func:`simulate`.
+    """
+    sim = simulate(seed=seed, samples=list(samples))
+    coord = ["#CHR", "START", "END"]
+    _lead(sim.seg_ucn, coord + ["SAMPLE"]).to_csv(SEG_FIXTURE, sep="\t", index=False)
+    _lead(sim.obs.drop(columns=["cnp"]), coord + ["SAMPLE"]).to_csv(
+        BBC_UCN, sep="\t", index=False
+    )
+    sim.expected_1d.to_csv(EXPECTED_1D, sep="\t", index=False)
+    _lead(sim.expected_2d, coord + ["SAMPLE"]).to_csv(
+        EXPECTED_2D, sep="\t", index=False
+    )
+    np.savetxt(HEATMAP_RDR, sim.heatmap_rdr, delimiter="\t", fmt="%.6g")
+    np.savetxt(HEATMAP_BAF, sim.heatmap_baf, delimiter="\t", fmt="%.6g")
+    _cell_posteriors(sim.heatmap_labels, sim.clones).to_csv(
+        CELL_POSTERIORS, sep="\t", index=False
+    )
+
+
+def load_dataset(samples: list | None = None) -> Sim:
+    """Load the materialized fixture from ``tests/data`` into a :class:`Sim`.
+
+    The read-back mirror of :func:`write_dataset`: the ``cnp`` column is rebuilt
+    from ``cn_<clone>``, per-sample tables are filtered to ``samples``, and the
+    ``bins`` coordinate table is taken from the first sample's rows.
+
+    Args:
+        samples: Sample ids to keep. None keeps every sample in the files.
+
+    Returns:
+        A :class:`Sim` bundle equivalent to :func:`simulate` for those samples.
+    """
+    obs = pd.read_table(BBC_UCN)
+    seg = pd.read_table(SEG_FIXTURE)
+    exp1 = pd.read_table(EXPECTED_1D)
+    exp2 = pd.read_table(EXPECTED_2D)
+    clones = _clone_names(seg)
+    present = list(dict.fromkeys(seg["SAMPLE"].astype(str)))
+    samples = present if samples is None else [str(s) for s in samples]
+
+    obs["cnp"] = obs[[f"cn_{c}" for c in clones]].agg(";".join, axis=1)
+    obs["pass_qc"] = obs["pass_qc"].astype(bool)
+    seg["PI_VIOL"] = seg["PI_VIOL"].astype(bool)
+    obs = obs[obs["SAMPLE"].astype(str).isin(samples)].reset_index(drop=True)
+    seg = seg[seg["SAMPLE"].astype(str).isin(samples)].reset_index(drop=True)
+    exp2 = exp2[exp2["SAMPLE"].astype(str).isin(samples)].reset_index(drop=True)
+    exp1 = exp1[
+        ["#CHR", "START", "END"]
+        + [c for c in exp1.columns if c.rsplit("_", 1)[-1] in samples]
+    ]
+    bins = obs[obs["SAMPLE"].astype(str) == samples[0]][
+        ["#CHR", "START", "END"]
+    ].reset_index(drop=True)
+    return Sim(
+        bins=bins,
+        seg_ucn=seg,
+        obs=obs,
+        expected_1d=exp1,
+        expected_2d=exp2,
+        clones=clones,
+        samples=samples,
+        heatmap_rdr=np.loadtxt(HEATMAP_RDR, delimiter="\t"),
+        heatmap_baf=np.loadtxt(HEATMAP_BAF, delimiter="\t"),
+        heatmap_labels=pd.read_table(CELL_POSTERIORS)["clone"].to_numpy(),
+    )
+
+
 def _demo() -> None:
     """Render a couple of demo figures into the project .tmp, as a sanity check."""
     import matplotlib
@@ -335,4 +458,10 @@ def _demo() -> None:
 
 
 if __name__ == "__main__":
-    _demo()
+    import sys
+
+    if "--demo" in sys.argv:
+        _demo()
+    else:
+        write_dataset()
+        print(f"wrote fixture files to {DATA_DIR}")

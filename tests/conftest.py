@@ -1,7 +1,8 @@
 """Shared fixtures: a headless backend, the reference on disk, and the toy data.
 
-Every fixture is built from :mod:`tests.simulate`, so the tests never touch real
-benchmark files and stay deterministic.
+The datasets are loaded from the materialized fixture files in ``tests/data``
+(written by ``simulate.write_dataset``), so the tests read the same TSVs the
+README and gallery do, and stay deterministic.
 """
 
 import matplotlib
@@ -10,8 +11,8 @@ import pytest
 matplotlib.use("Agg")
 
 from cnplot import GenomeAxis
+from simulate import load_dataset
 from simulate import reference as _reference
-from simulate import simulate
 
 
 @pytest.fixture(scope="session")
@@ -39,13 +40,13 @@ def axis_keep(reference):
 @pytest.fixture
 def sim():
     """The single-sample dataset, sample id "S1"."""
-    return simulate(seed=0, samples=["S1"])
+    return load_dataset(["S1"])
 
 
 @pytest.fixture
 def sim2():
     """The two-sample toy dataset (shared profile, differing proportions)."""
-    return simulate(seed=0, samples=["S1", "S2"])
+    return load_dataset(["S1", "S2"])
 
 
 @pytest.fixture
