@@ -1,6 +1,6 @@
 name: release (build only - PyPI publishing deferred)
 
-# PyPI trusted-publishing is deferred (see TODO.md M8). For now this workflow:
+# PyPI trusted-publishing is deferred (see docs/TODO.md M8). For now this workflow:
 #   - does NOT run automatically (manual dispatch only), so tag pushes no longer
 #     trigger a failing publish;
 #   - builds + checks the sdist/wheel when dispatched manually;

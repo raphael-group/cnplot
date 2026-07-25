@@ -30,3 +30,6 @@ venv/
 
 # Scratch output from test renders
 .tmp/
+
+# Local planning notes
+plan.md

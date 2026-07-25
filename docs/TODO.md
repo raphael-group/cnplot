@@ -6,7 +6,7 @@
 - Copytyping - `Copytyping-dev/src/copytyping/plot/` (single-cell CN)
 - UGP - `universal-genotyping/workflow/scripts/plot_utils.py` (reference only, not a consumer)
 
-The build (0.1.0) is done - see [CHANGELOG.md](CHANGELOG.md) for the delivered surface and the
+The build (0.1.0) is done - see [CHANGELOG.md](../CHANGELOG.md) for the delivered surface and the
 deliberate behavior changes vs the origin repos. The migration (M9) is done and committed in both
 consumer repos. What remains: publish (M8).
 

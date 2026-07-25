@@ -2,7 +2,7 @@
 
 [![Release](https://img.shields.io/github/v/tag/raphael-group/cnplot?sort=semver&label=release)](https://github.com/raphael-group/cnplot/releases)
 
-`cnplot` is an allele-specific copy-number profile visualization python package implemented based on matplotlib. This package is developed for the purpose of easily and beautifully plotting copy-number profiles as well as read-depth ratio, B-allele frequency (and others) observations across multiple samples with a common reference coordinates with both single-cell and (pseudo-)bulk option.
+`cnplot` is an allele-specific copy-number profile visualization python package implemented based on matplotlib and seaborn. This package is developed for the purpose of easily and beautifully plotting copy-number profiles as well as read-depth ratio, B-allele frequency (and others) observations across multiple samples with a common reference coordinates with both single-cell and (pseudo-)bulk option.
 
 
 ## Installation
