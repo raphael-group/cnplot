@@ -1,13 +1,15 @@
-name: release
+name: release (build only - PyPI publishing deferred)
 
-# Build, check, and publish the package via PyPI trusted publishing (OIDC; no
-# stored token). A pre-release tag (e.g. v0.1.0rc1) goes to TestPyPI; a final
-# tag (e.g. v0.1.0) goes to PyPI.
+# PyPI trusted-publishing is deferred (see TODO.md M8). For now this workflow:
+#   - does NOT run automatically (manual dispatch only), so tag pushes no longer
+#     trigger a failing publish;
+#   - builds + checks the sdist/wheel when dispatched manually;
+#   - keeps the TestPyPI / PyPI publish jobs commented out below as a TODO.
+# To enable publishing: register the trusted publishers and the `testpypi` /
+# `pypi` environments, switch the trigger to tags, and uncomment the jobs.
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
 
 jobs:
   build:
@@ -28,34 +30,41 @@ jobs:
           name: dist
           path: dist/
 
-  testpypi:
-    name: Publish to TestPyPI (pre-release tags)
-    needs: build
-    if: contains(github.ref_name, 'rc') || contains(github.ref_name, 'a') || contains(github.ref_name, 'b')
-    runs-on: ubuntu-latest
-    environment: testpypi
-    permissions:
-      id-token: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
-      - uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          repository-url: https://test.pypi.org/legacy/
-
-  pypi:
-    name: Publish to PyPI (final tags)
-    needs: build
-    if: "!contains(github.ref_name, 'rc') && !contains(github.ref_name, 'a') && !contains(github.ref_name, 'b')"
-    runs-on: ubuntu-latest
-    environment: pypi
-    permissions:
-      id-token: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
-      - uses: pypa/gh-action-pypi-publish@release/v1
+# TODO(publish): switch the trigger above to
+#   on:
+#     push:
+#       tags:
+#         - "v*"
+# and uncomment the publish jobs below.
+#
+#   testpypi:
+#     name: Publish to TestPyPI (pre-release tags)
+#     needs: build
+#     if: contains(github.ref_name, 'rc') || contains(github.ref_name, 'a') || contains(github.ref_name, 'b')
+#     runs-on: ubuntu-latest
+#     environment: testpypi
+#     permissions:
+#       id-token: write
+#     steps:
+#       - uses: actions/download-artifact@v4
+#         with:
+#           name: dist
+#           path: dist/
+#       - uses: pypa/gh-action-pypi-publish@release/v1
+#         with:
+#           repository-url: https://test.pypi.org/legacy/
+#
+#   pypi:
+#     name: Publish to PyPI (final tags)
+#     needs: build
+#     if: "!contains(github.ref_name, 'rc') && !contains(github.ref_name, 'a') && !contains(github.ref_name, 'b')"
+#     runs-on: ubuntu-latest
+#     environment: pypi
+#     permissions:
+#       id-token: write
+#     steps:
+#       - uses: actions/download-artifact@v4
+#         with:
+#           name: dist
+#           path: dist/
+#       - uses: pypa/gh-action-pypi-publish@release/v1
