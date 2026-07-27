@@ -43,7 +43,8 @@ PyPI is the source of truth; conda-forge is generated from the PyPI sdist. Stric
       before the first upload freezes the API.
 - [ ] Confirm every runtime dep (numpy, pandas, matplotlib, seaborn, adjustText) has a
       conda-forge feedstock covering `python >=3.10`. Gates M8b; catch a PyPI-only dep now.
-- [ ] Bump `__version__` off `.dev0` to `0.1.0`.
+- [ ] Bump the release version in the repo-root `VERSION` file (the single source for both
+      `pyproject.toml` and `cnplot.__version__`).
 - [ ] `python -m build`, then `twine check dist/*` (twine is in the `dev` extra).
 - [ ] Register on TestPyPI + PyPI as GitHub trusted publishers (OIDC, no stored token).
 - [ ] Release workflow: build -> `twine check` -> TestPyPI on pre-release tag, PyPI on `v*` tag.

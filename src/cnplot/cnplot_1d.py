@@ -172,6 +172,8 @@ def plot_scatter_1d(
     href: float | None = None,
     reverse_y: bool = False,
     plot_chrname: bool = True,
+    mb_ticks: bool = False,
+    mb_tick_step: float = 50_000_000,
     show_gaps: bool = True,
     exp_color="black",
     exp_linewidth: float = 1.5,
@@ -213,6 +215,10 @@ def plot_scatter_1d(
         href: Y value for a dotted grey reference line, e.g. 0.5 on a BAF row.
         reverse_y: Invert the y-axis.
         plot_chrname: Draw chromosome labels under the axes.
+        mb_ticks: Label x in Mb every ``mb_tick_step`` bp within each chromosome
+            instead of one name-tick per chromosome; see
+            :func:`~cnplot.cnplot_utils.decorate_genome_axis`.
+        mb_tick_step: Mb-tick spacing in base pairs. Only with ``mb_ticks``.
         show_gaps: Mark uncovered stretches, dashed where they are collapsed.
         exp_color: Color of the expected overlay.
         exp_linewidth: Width of the expected overlay.
@@ -292,6 +298,12 @@ def plot_scatter_1d(
         ax.set_ylabel(ylabel, fontsize=12, fontweight="bold")
     if title is not None:
         ax.set_title(title, fontsize=12, fontweight="bold", loc="left")
-    decorate_genome_axis(ax, genome_axis, plot_chrname=plot_chrname)
+    decorate_genome_axis(
+        ax,
+        genome_axis,
+        plot_chrname=plot_chrname,
+        mb_ticks=mb_ticks,
+        mb_tick_step=mb_tick_step,
+    )
     if reverse_y:
         ax.invert_yaxis()

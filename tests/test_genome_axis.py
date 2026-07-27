@@ -68,3 +68,30 @@ def test_excluded_chroms_drop(reference):
 
     kept = GenomeAxis(*reference, excluded_chroms=["chr21", "chr22"])
     assert "chr21" not in kept.chrs and "chr22" not in kept.chrs
+
+
+def test_region_bed_none_is_whole_genome(reference, sim):
+    from cnplot import GenomeAxis
+
+    _, chrom_sizes = reference
+    whole = GenomeAxis(None, chrom_sizes, collapse_gaps=False)
+    # every chromosome kept and no uncovered stretch: a plain full-genome axis
+    assert len(whole.chrs) == 22
+    assert whole.gaps == []
+    assert whole.build_coordinates(sim.bins).n_unmapped == 0
+
+
+def test_mb_ticks_labels_are_mb_and_drop_zero(axis_keep):
+    import matplotlib.pyplot as plt
+
+    from cnplot import decorate_genome_axis
+
+    fig, ax = plt.subplots()
+    decorate_genome_axis(ax, axis_keep, mb_ticks=True, mb_tick_step=20_000_000)
+    labels = [t.get_text() for t in ax.get_xticklabels()]
+    assert labels and all(lbl.isdigit() for lbl in labels)  # Mb integers
+    assert "0" not in labels  # chromosome-start tick dropped
+    # chromosome names drawn as off-axis text, one per chromosome
+    names = [t.get_text() for t in ax.texts if t.get_text()]
+    assert len(names) == len(axis_keep.chrs)
+    plt.close(fig)

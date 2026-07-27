@@ -152,6 +152,33 @@ def draw_segment_boundaries(
             ax.axvspan(gap.start, gap.end, color=shade, alpha=shade_alpha, zorder=0)
 
 
+def _mb_tick_positions(genome_axis: GenomeAxis, step: float) -> tuple:
+    """Intra-chromosome Mb tick positions in axis coordinates, and their labels.
+
+    Ticks fall at every ``step`` base pairs within each chromosome, mapped through
+    the axis segments so they land correctly under either gap layout; the tick at a
+    chromosome's own start (genomic 0) is dropped.
+
+    Args:
+        genome_axis: Axis supplying the segment transform.
+        step: Tick spacing in base pairs.
+
+    Returns:
+        (positions, labels): axis-coordinate x positions and their Mb integer
+        labels, in axis order.
+    """
+    positions, labels = [], []
+    for seg in genome_axis.segments:
+        shift = seg.axis_start - seg.raw_start
+        first = int(np.ceil(seg.raw_start / step)) * int(step)
+        for p in range(first, int(seg.raw_end), int(step)):
+            if p == 0:
+                continue
+            positions.append(p + shift)
+            labels.append(p // 1_000_000)
+    return positions, labels
+
+
 def decorate_genome_axis(
     ax: plt.Axes,
     genome_axis: GenomeAxis,
@@ -161,19 +188,33 @@ def decorate_genome_axis(
     fontsize: int = 8,
     hide_spines: bool = False,
     pad_axis: bool = False,
+    mb_ticks: bool = False,
+    mb_tick_step: float = 50_000_000,
 ) -> None:
     """Apply genome-wide x-axis limits, ticks, and chromosome labels.
+
+    Two labeling modes. By default one chromosome-name tick sits at each
+    chromosome midpoint. With ``mb_ticks`` the ticks instead mark intra-chromosome
+    position every ``mb_tick_step`` base pairs (labeled in Mb, reset per
+    chromosome), and chromosome names are drawn as compact text off the axis - the
+    denser mode for genome-wide scatter QC.
 
     Args:
         ax: Axes to decorate.
         genome_axis: Genome axis supplying limits and tick positions.
-        plot_chrname: Draw one chromosome label per tick; False clears them,
-            as stacked panels do above the last row.
+        plot_chrname: Draw the chromosome labels; False clears them, as stacked
+            panels do above the last row.
         label_pos: "bottom" or "top". CNP profiles label the top.
-        rotation: Label rotation in degrees.
+        rotation: Tick label rotation in degrees, applied to the chromosome names
+            or, with ``mb_ticks``, to the Mb labels; rotating keeps the dense Mb
+            labels from overlapping. Chromosome names stay upright in that mode.
         fontsize: Label font size.
         hide_spines: Hide all four spines.
         pad_axis: Use the padded limits instead of tight genome ends.
+        mb_ticks: Mark position in Mb every ``mb_tick_step`` bp within each
+            chromosome instead of one name-tick per chromosome. Default off keeps
+            the chromosome-name behavior.
+        mb_tick_step: Mb-tick spacing in base pairs. Only with ``mb_ticks``.
 
     Raises:
         ValueError: If ``label_pos`` is not "bottom" or "top".
@@ -191,6 +232,36 @@ def decorate_genome_axis(
         for spine in ax.spines.values():
             spine.set_visible(False)
 
+    on_top = label_pos == "top"
+
+    if mb_ticks:
+        positions, labels = _mb_tick_positions(genome_axis, mb_tick_step)
+        ax.set_xticks(positions)
+        ax.set_xticklabels(
+            labels,
+            fontsize=max(fontsize - 3, 4),
+            rotation=rotation,
+            ha="left" if on_top else "right",
+            rotation_mode="anchor",
+        )
+        ax.tick_params(axis="x", length=2, labeltop=on_top, labelbottom=not on_top)
+        if plot_chrname:
+            y = 1.10 if on_top else -0.10
+            va = "bottom" if on_top else "top"
+            for x, name in zip(
+                genome_axis.xtick_chrs, genome_axis.xlab_chrs, strict=True
+            ):
+                ax.text(
+                    x,
+                    y,
+                    str(name).upper().removeprefix("CHR"),
+                    ha="center",
+                    va=va,
+                    fontsize=fontsize,
+                    transform=ax.get_xaxis_transform(),
+                )
+        return
+
     if not plot_chrname:
         ax.set_xticks([])
         ax.set_xticklabels([])
@@ -198,7 +269,6 @@ def decorate_genome_axis(
 
     ax.set_xticks(genome_axis.xtick_chrs)
     ax.set_xticklabels(genome_axis.xlab_chrs, rotation=rotation, fontsize=fontsize)
-    on_top = label_pos == "top"
     ax.tick_params(
         axis="x",
         labeltop=on_top,

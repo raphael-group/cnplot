@@ -43,7 +43,7 @@ Issues = "https://github.com/raphael-group/cnplot/issues"
 package-dir = { "" = "src" }
 
 [tool.setuptools.dynamic]
-version = { attr = "cnplot.__version__" }
+version = { file = "VERSION" }
 
 [tool.setuptools.packages.find]
 where = ["src"]

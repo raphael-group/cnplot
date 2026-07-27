@@ -156,6 +156,8 @@ def plot_scatter_1d_multisample(
     row_width: float = 20.0,
     row_height: float = 2.0,
     markersize: float | None = None,
+    mb_ticks: bool = False,
+    mb_tick_step: float = 50_000_000,
     intra_group_hspace: float = 0.25,
     inter_group_hspace: float = 0.15,
     profile_hspace: float = 0.2,
@@ -203,6 +205,9 @@ def plot_scatter_1d_multisample(
         row_width: Figure width in inches.
         row_height: Height of one row in inches.
         markersize: Marker size; None resolves one from the busiest group.
+        mb_ticks: Label each row's x-axis in Mb per chromosome; see
+            :func:`~cnplot.cnplot_1d.plot_scatter_1d`.
+        mb_tick_step: Mb-tick spacing in base pairs. Only with ``mb_ticks``.
         intra_group_hspace: Space between rows of one group.
         inter_group_hspace: Space between groups, as a fraction of a group's
             height; a group is several rows tall, so keep this small.
@@ -318,6 +323,8 @@ def plot_scatter_1d_multisample(
                 href=spec["href"],
                 reverse_y=spec["reverse_y"],
                 plot_chrname=last_row and last_group and not has_profile,
+                mb_ticks=mb_ticks,
+                mb_tick_step=mb_tick_step,
                 rasterized=rasterized,
             )
             if last_row and show_props and seg_df is not None:
@@ -352,7 +359,7 @@ def plot_heatmap_cnp(
     title: str | None = None,
     figsize: tuple = (15, 8),
     height_ratios: tuple = (10, 2, 1.5),
-    profile_hspace: float = 0.35,
+    profile_hspace: float | None = None,
     top: float = 0.9,
     profile: str = "cnv",
     profile_kwargs: dict | None = None,
@@ -379,7 +386,9 @@ def plot_heatmap_cnp(
         figsize: Figure size in inches.
         height_ratios: Row heights for (heatmap, profile, legend).
         profile_hspace: Space between the heatmap and the profile below it; holds
-            the chromosome labels drawn on top of the profile.
+            the chromosome labels drawn on top of the profile. None picks 0.35,
+            or 0.45 under ``mb_ticks``, whose rotated Mb labels take the same
+            band.
         top: Top of the axes block in figure fraction; the space above holds the
             title.
         profile: "cnv" draws the joint integer-CN profile
@@ -399,6 +408,8 @@ def plot_heatmap_cnp(
     """
     if profile not in ("cnv", "ascn"):
         raise ValueError("profile must be 'cnv' or 'ascn'")
+    if profile_hspace is None:
+        profile_hspace = 0.45 if heatmap_kwargs.get("mb_ticks") else 0.35
     heatmap_kwargs.setdefault("show_colorbar", True)
     heatmap_kwargs.setdefault("show_block_labels", False)
     heatmap_kwargs["plot_chrname"] = False

@@ -4,7 +4,14 @@ The public API is re-exported here, so ``from cnplot import GenomeAxis,
 plot_cnv_profile`` works without reaching into submodules. Each name comes from
 one module's ``__all__``; the seg.ucn readers and other private helpers stay in
 their modules.
+
+The version lives in the repo-root ``VERSION`` file, which ``pyproject.toml``
+also builds from, so a bump needs one edit; ``__version__`` reads it back.
 """
+
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _installed_version
+from pathlib import Path
 
 from .cnplot_1d import plot_scatter_1d
 from .cnplot_2d import annotate_landmarks, get_landmarks, plot_scatter_2d
@@ -66,7 +73,27 @@ from .cnplot_utils import (
     shade_regions,
 )
 
-__version__ = "0.1.0"
+
+def _read_version() -> str:
+    """Resolve the package version.
+
+    A source checkout reads the repo-root ``VERSION`` file, so an editable
+    install reports a bump without being reinstalled; the file is absent from
+    installed distributions, which fall back to their build-time metadata.
+
+    Returns:
+        The version string.
+    """
+    version_file = Path(__file__).resolve().parents[2] / "VERSION"
+    if version_file.is_file():
+        return version_file.read_text().strip()
+    try:
+        return _installed_version("cnplot")
+    except PackageNotFoundError:
+        return "unknown"
+
+
+__version__ = _read_version()
 
 __all__ = [
     "BAF_COLORS",

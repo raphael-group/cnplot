@@ -57,6 +57,8 @@ def plot_heatmap(
     cmap=None,
     norm=None,
     show_block_labels: bool = True,
+    mb_ticks: bool = False,
+    mb_tick_step: float = 50_000_000,
     show_gaps: bool = True,
     show_colorbar: bool = False,
     cbar_label: str | None = None,
@@ -91,6 +93,11 @@ def plot_heatmap(
         norm: Normalization for the mesh.
         show_block_labels: Write "<label> (<pct>%)" at each row block; else the
             labels live in the side strips.
+        mb_ticks: Label x in Mb every ``mb_tick_step`` bp within each chromosome
+            instead of one name-tick per chromosome; see
+            :func:`~cnplot.cnplot_utils.decorate_genome_axis`. The Mb labels sit
+            below the mesh, as in the 1D scatter, not above it.
+        mb_tick_step: Mb-tick spacing in base pairs. Only with ``mb_ticks``.
         show_gaps: Dash the collapsed gaps, as the profile does.
         show_colorbar: Draw a colorbar for the mesh values, right of the axes.
         cbar_label: Colorbar label.
@@ -152,9 +159,20 @@ def plot_heatmap(
         ax.set_ylabel(ylabel, rotation=90, va="center")
     if title is not None:
         ax.set_title(title)
-    decorate_genome_axis(ax, genome_axis, plot_chrname=plot_chrname, label_pos="top")
+    decorate_genome_axis(
+        ax,
+        genome_axis,
+        plot_chrname=plot_chrname,
+        label_pos="bottom" if mb_ticks else "top",
+        mb_ticks=mb_ticks,
+        mb_tick_step=mb_tick_step,
+    )
     if plot_chrname:
-        plt.setp(ax.get_xticklabels(), fontweight="bold")
+        # in mb_ticks mode the ticks are Mb numbers and the names are off-axis text
+        if mb_ticks:
+            plt.setp(ax.texts, fontweight="bold")
+        else:
+            plt.setp(ax.get_xticklabels(), fontweight="bold")
 
     # right-side chrome, left to right: colorbar, then one legend per strip
     right = None

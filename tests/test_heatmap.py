@@ -235,6 +235,30 @@ def test_continuous_strip_colorbar(axis, sim):
     plt.close(fig)
 
 
+def test_mb_ticks_on_heatmap(axis, sim, saved):
+    cmap, norm, _ = get_baf_cmap()
+    fig, ax = plt.subplots(figsize=(12, 4))
+    plot_heatmap(
+        ax,
+        sim.heatmap_baf,
+        sim.bins,
+        axis,
+        row_labels=sim.heatmap_labels,
+        cmap=cmap,
+        norm=norm,
+        mb_ticks=True,
+        mb_tick_step=20_000_000,
+    )
+    labels = [t.get_text() for t in ax.get_xticklabels()]
+    assert labels and all(lbl.isdigit() for lbl in labels)  # Mb integers
+    assert "0" not in labels  # chromosome-start tick dropped
+    # chromosome names drawn as bold off-axis text, one per chromosome
+    names = [t for t in ax.texts if t.get_text()]
+    assert len(names) == len(axis.chrs)
+    assert all(t.get_fontweight() == "bold" for t in names)
+    saved(fig, "heatmap_mb_ticks")
+
+
 def test_colorbar_adds_axes(axis, sim):
     cmap, norm, _ = get_baf_cmap()
     fig, ax = plt.subplots(figsize=(12, 4))

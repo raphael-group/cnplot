@@ -1,6 +1,8 @@
 # CN-Plot
 
-[![Release](https://img.shields.io/github/v/tag/raphael-group/cnplot?sort=semver&label=release)](https://github.com/raphael-group/cnplot/releases)
+[![Version](https://img.shields.io/badge/version-0.1.1-blue.svg)](VERSION)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![Code style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
 `cnplot` is an allele-specific copy-number profile visualization python package implemented based on matplotlib and seaborn. This package is developed for the purpose of easily and beautifully plotting copy-number profiles as well as read-depth ratio, B-allele frequency (and others) observations across multiple samples with a common reference coordinates with both single-cell and (pseudo-)bulk option.
 
@@ -138,6 +140,7 @@ fig = plot_heatmap_cnp(
     title="Single-cell RDR heatmap",
     row_labels=cell_labels, cmap=cmap, norm=norm,
     cbar_label="RDR", cbar_ticks=ticks,
+    mb_ticks=True,                       # Mb ticks every 50Mb per chromosome
     strips=[
         {"name": "Copy-typing", "matrix": posteriors, "order": clones, "cmap": clone_cmap},
         {"name": "cell_type", "values": celltype, "display_name": "Cell-type"},

@@ -254,7 +254,7 @@ class GenomeAxis:
 
     def __init__(
         self,
-        region_bed: str,
+        region_bed: str | None,
         chrom_sizes: str,
         excluded_chroms: list | tuple | None = DEFAULT_EXCLUDED_CHROMS,
         chr_shift: float = 0.0,
@@ -269,7 +269,10 @@ class GenomeAxis:
 
         Args:
             region_bed: Path to the regions to draw, sorted and non-overlapping
-                within each chromosome.
+                within each chromosome. None draws one full-length region per
+                chromosome from ``chrom_sizes``, i.e. a plain whole-genome axis
+                with no gaps; region/blacklist overlays are then a separate
+                :func:`~cnplot.cnplot_utils.shade_regions` concern.
             chrom_sizes: Path to the chromosome-sizes file. Required either way:
                 it is what makes a trailing gap detectable, since regions alone
                 cannot say where a chromosome ends.
@@ -286,7 +289,16 @@ class GenomeAxis:
                 a chromosome absent from the sizes file.
         """
         sizes = read_chr_sizes(chrom_sizes)
-        regions = read_bed(region_bed)
+        if region_bed is None:
+            regions = pd.DataFrame(
+                {
+                    "#CHR": list(sizes.keys()),
+                    "START": np.zeros(len(sizes), dtype=int),
+                    "END": np.fromiter(sizes.values(), dtype=int, count=len(sizes)),
+                }
+            )
+        else:
+            regions = read_bed(region_bed)
         drop = {_norm_chrom(c) for c in (excluded_chroms or ())}
         if drop:
             removed = [ch for ch in sizes if _norm_chrom(ch) in drop]

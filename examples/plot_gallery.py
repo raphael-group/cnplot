@@ -64,7 +64,9 @@ palette = get_mixcn_cmap(
 
 # 1. integer copy-number profile
 fig, (ax, lg) = plt.subplots(2, 1, figsize=(12, 3), height_ratios=[3, 1])
-plot_cnv_profile(ax, sim.seg_ucn, genome_axis, sample_id="S1", ax_leg=lg)
+plot_cnv_profile(
+    ax, sim.seg_ucn, genome_axis, sample_id="S1", ax_leg=lg, show_pi_viol=False
+)
 suptitle(fig, "Integer copy-number profile", y=1.18)
 save(fig, "profile")
 
@@ -81,6 +83,8 @@ fig = plot_scatter_1d_multisample(
     hue="cnp",
     palette=palette,
     seg_df=sim.seg_ucn,
+    mb_ticks=True,
+    show_pi_viol=False,
 )
 suptitle(fig, "Genome-wide RDR and BAF (multi-sample)", y=1.0)
 save(fig, "scatter_1d")
@@ -116,6 +120,8 @@ fig = plot_scatter_1d_multisample(
     hue="cnp",
     palette=palette,
     seg_df=sim.seg_ucn,
+    mb_ticks=True,
+    show_pi_viol=False,
 )
 suptitle(fig, "Allele-specific fractional copy number (FCN-A / FCN-B)", y=1.0)
 save(fig, "fcn_ab")
@@ -159,5 +165,7 @@ for matrix, cmap, norm, label, ticks, out in [
         cbar_label=label,
         cbar_ticks=ticks,
         strips=strips,
+        mb_ticks=True,
+        profile_kwargs={"show_pi_viol": False},
     )
     save(fig, out)
