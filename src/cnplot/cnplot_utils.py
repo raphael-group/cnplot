@@ -9,12 +9,14 @@ reads, so they live here rather than in any one of them. Reference readers live
 in :mod:`cnplot.cnplot_io_utils`.
 """
 
+import contextlib
 import logging
 
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from matplotlib.backends import backend_pdf
 from matplotlib.backends.backend_pdf import PdfPages
 
 from .cnplot_genome_axis import GenomeAxis
@@ -601,6 +603,39 @@ def resolve_colors(
 # =============================================================================
 
 
+@contextlib.contextmanager
+def _compact_rasterized_images():
+    """Make the PDF backend keep a compact copy of each rasterized image.
+
+    Works around a matplotlib memory bug. For every rasterized artist,
+    ``backend_mixed.MixedModeRenderer`` renders into a buffer the size of the
+    whole figure (``width_in * dpi`` by ``height_in * dpi``) and then hands the
+    PDF backend ``img[slice_y, slice_x]``, a *view* that keeps the whole buffer
+    alive. ``PdfFile`` holds every image it is given until the file is
+    finalized, so a multi-page PDF pins one full-figure buffer per rasterized
+    artist: peak memory grows as ``n_artists * fig_w_in * fig_h_in * dpi ** 2``
+    and is only released on close.
+
+    Copying the view on the way in drops each buffer as soon as the next artist
+    is drawn, leaving only the cropped pixels. The bytes written are unchanged.
+
+    Copy on insert, not per page: one page can hold many rasterized artists, so
+    deferring the copy still lets a page's worth of buffers accumulate.
+    """
+    original = backend_pdf.PdfFile.imageObject
+
+    def imageObject(self, image):
+        if getattr(image, "base", None) is not None:
+            image = np.ascontiguousarray(image)
+        return original(self, image)
+
+    backend_pdf.PdfFile.imageObject = imageObject
+    try:
+        yield
+    finally:
+        backend_pdf.PdfFile.imageObject = original
+
+
 class FigureSaver:
     """Multi-figure writer, a drop-in for ``PdfPages``.
 
@@ -646,9 +681,10 @@ class FigureSaver:
             **kwargs: Ignored; dpi and transparency come from the writer.
         """
         if self._pdf is not None:
-            self._pdf.savefig(
-                fig, dpi=self.dpi, bbox_inches="tight", transparent=self.transparent
-            )
+            with _compact_rasterized_images():
+                self._pdf.savefig(
+                    fig, dpi=self.dpi, bbox_inches="tight", transparent=self.transparent
+                )
         for img_type in self.img_types:
             if img_type == "pdf":
                 continue

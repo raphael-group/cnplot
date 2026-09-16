@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### cnplot package
+- `FigureSaver` no longer holds a whole-figure raster buffer per rasterized artist.
+  matplotlib renders each rasterized artist into a buffer the size of the entire figure
+  and passes the PDF backend a view of it, and the backend keeps every image until the
+  file is finalized, so a multi-page PDF pinned `n_artists * fig_w_in * fig_h_in * dpi^2`
+  bytes until close. `FigureSaver.savefig` now copies each image on the way in, so only
+  the cropped pixels are retained. Written output is byte-identical.
+
 ## 0.1.1
 
 Backward-compatible additions; existing calls and output are unchanged.
