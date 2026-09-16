@@ -1,9 +1,11 @@
 """Palettes and the shared resolvers - pure functions, no rendering."""
 
 import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
 import numpy as np
 
 from cnplot import (
+    BAF_LIM,
     MARKER_SIZE_LARGE,
     MARKER_SIZE_SMALL,
     get_baf_cmap,
@@ -35,6 +37,17 @@ def test_ylim_picks_tightest_window():
     assert resolve_ylim([0.1, -4.0]) == (-5, 5)
     assert resolve_ylim([0.1], expected=[3.0]) == (-5, 5)
     assert resolve_ylim([np.nan]) == (-5, 5)
+
+
+def test_baf_lim_pads_without_moving_ticks():
+    assert BAF_LIM == (-0.01, 1.01)
+    fig, ax = plt.subplots()
+    ax.set_ylim(*BAF_LIM)
+    fig.canvas.draw()
+    lo, hi = BAF_LIM
+    shown = [t for t in ax.get_yticks() if lo <= t <= hi]
+    assert np.allclose([shown[0], shown[-1]], [0.0, 1.0])
+    plt.close(fig)
 
 
 def test_ylim_scaled_caps_outliers():

@@ -50,6 +50,7 @@ from .cnplot_heatmap import plot_column_strips, plot_heatmap, plot_strip_legend
 from .cnplot_intcnp import plot_cnv_profile
 from .cnplot_io_utils import read_bed, read_chr_sizes
 from .cnplot_utils import (
+    BAF_LIM,
     CN_PREFIX,
     EXP_PREFIX,
     MARKER_SIZE_LARGE,
@@ -97,6 +98,7 @@ __version__ = _read_version()
 
 __all__ = [
     "BAF_COLORS",
+    "BAF_LIM",
     "CELLTYPE_CMAP",
     "CN_PREFIX",
     "DATASET_CMAP",

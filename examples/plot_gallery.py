@@ -27,6 +27,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "tests"))
 
 from cnplot import (  # noqa: E402
+    BAF_LIM,
     GenomeAxis,
     get_baf_cmap,
     get_log2rdr_cmap,
@@ -73,7 +74,7 @@ save(fig, "profile")
 # 2. genome-wide RDR + BAF, multi-sample, over the shared profile
 row_specs = [
     make_row_spec("RD", ylabel="RDR", ylim=(0, 3), href=1.0),
-    make_row_spec("BAF", ylabel="mhBAF", ylim=(-0.05, 1.05), href=0.5),
+    make_row_spec("BAF", ylabel="mhBAF", ylim=BAF_LIM, href=0.5),
 ]
 fig = plot_scatter_1d_multisample(
     sim.obs,
@@ -98,7 +99,7 @@ grid = plot_scatter_2d(
     group="S1",
     hue="cnp",
     palette=palette,
-    xlim=(0, 1),
+    xlim=BAF_LIM,
     ylim=(0, 3),
     xlabel="mhBAF",
     ylabel="RDR",

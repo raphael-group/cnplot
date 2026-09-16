@@ -60,7 +60,7 @@ We plots the per-bin read-depth ratio (RDR) and B-allele frequency (BAF) for bot
 Reference: [`obs_df`](docs/reference.md#obs_df-bin-level-observations), [`expected_df` (1D)](docs/reference.md#expected_df-1d-overlay).
 
 ```python
-from cnplot import get_mixcn_cmap, make_row_spec, plot_scatter_1d_multisample
+from cnplot import BAF_LIM, get_mixcn_cmap, make_row_spec, plot_scatter_1d_multisample
 
 obs_df = pd.read_table("sample.bbc.ucn.tsv")
 expected_1d = pd.read_table("sample.expected1d.tsv")
@@ -72,7 +72,7 @@ palette = get_mixcn_cmap(obs_df["cnp"].unique())
 
 rows = [
     make_row_spec("RD", ylabel="RDR", ylim=(0, 3), href=1.0),
-    make_row_spec("BAF", ylabel="mhBAF", ylim=(-0.05, 1.05), href=0.5),
+    make_row_spec("BAF", ylabel="mhBAF", ylim=BAF_LIM, href=0.5),
 ]
 fig = plot_scatter_1d_multisample(
     obs_df, genome_axis, row_specs=rows, groups=["S1", "S2"],
@@ -88,13 +88,13 @@ We plots the joint RDR-vs-BAF scatter for one sample, with the expected copy-num
 Reference: [`expected_df` (2D)](docs/reference.md#expected_df-2d-landmarks).
 
 ```python
-from cnplot import plot_scatter_2d
+from cnplot import BAF_LIM, plot_scatter_2d
 
 expected_2d = pd.read_table("sample.expected2d.tsv")
 grid = plot_scatter_2d(
     obs_df, "BAF", "RD", expected_df=expected_2d, group="S1",
     hue="cnp", palette=palette, title="RDR vs BAF joint scatter",
-    xlim=(0, 1), ylim=(0, 3), xlabel="mhBAF", ylabel="RDR",
+    xlim=BAF_LIM, ylim=(0, 3), xlabel="mhBAF", ylabel="RDR",
 )
 ```
 

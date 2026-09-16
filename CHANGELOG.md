@@ -3,6 +3,10 @@
 ## Unreleased
 
 ### cnplot package
+- `BAF_LIM = (-0.01, 1.01)`: default limits for a BAF-like axis on [0, 1], exported from
+  `cnplot`. The pad keeps points at exactly 0 or 1 off the spine while the ticks still run
+  0.0 to 1.0. Used by the gallery/README BAF row (`ylim`) and the RDR-vs-BAF scatter
+  (`xlim`), which previously used `(-0.05, 1.05)` and `(0, 1)`.
 - `FigureSaver` no longer holds a whole-figure raster buffer per rasterized artist.
   matplotlib renders each rasterized artist into a buffer the size of the entire figure
   and passes the PDF backend a view of it, and the backend keeps every image until the

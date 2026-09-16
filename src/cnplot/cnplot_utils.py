@@ -24,6 +24,7 @@ from .cnplot_genome_axis import GenomeAxis
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "BAF_LIM",
     "CN_PREFIX",
     "EXP_PREFIX",
     "FigureSaver",
@@ -66,6 +67,10 @@ SAMPLE_COL = "SAMPLE"
 MARKER_SIZE_SMALL = 2.0
 MARKER_SIZE_LARGE = 20.0
 MAX_NDOTS = 5000
+
+# Default limits for a BAF-like axis on [0, 1]. The pad keeps points at 0 or 1
+# off the spine; ticks still run 0.0 to 1.0, the pad being too small to label.
+BAF_LIM = (-0.01, 1.01)
 
 
 # =============================================================================
