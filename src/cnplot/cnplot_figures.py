@@ -30,8 +30,10 @@ from .cnplot_intcnp import (
     select_sample,
 )
 from .cnplot_utils import (
+    FS_AXLABEL,
     NORMAL_CLONE,
     SAMPLE_COL,
+    display_label,
     resolve_marker_size,
 )
 
@@ -158,6 +160,7 @@ def plot_scatter_1d_multisample(
     markersize: float | None = None,
     mb_ticks: bool = False,
     mb_tick_step: float = 50_000_000,
+    xlabel: str | None = None,
     intra_group_hspace: float = 0.25,
     inter_group_hspace: float = 0.15,
     profile_hspace: float = 0.2,
@@ -212,7 +215,9 @@ def plot_scatter_1d_multisample(
         inter_group_hspace: Space between groups, as a fraction of a group's
             height; a group is several rows tall, so keep this small.
         profile_hspace: Space between the last row and the profile, which needs
-            room for the chromosome labels it draws along its top.
+            room for the chromosome labels it draws along its top. Raised to a
+            floor of 0.2 when ``xlabel`` is set, since the name is drawn above
+            those labels.
         rasterized: Rasterize the point collections.
         **profile_kwargs: Passed to
             :func:`~cnplot.cnplot_intcnp.plot_cnv_profile`.
@@ -263,13 +268,15 @@ def plot_scatter_1d_multisample(
 
     # Nested so the three gaps stay independent: rows within a group, group to
     # group, and rows to profile. One flat grid would tie the last two together.
+    # NB: a top-side xlabel sits in the rows-to-profile gap; 0.2 clears the row above.
+    gap = max(profile_hspace, 0.2) if xlabel is not None else profile_hspace
     if has_profile:
         outer = GridSpec(
             2,
             1,
             figure=fig,
             height_ratios=[rows_h, profile_h],
-            hspace=profile_hspace,
+            hspace=gap,
             top=0.97,
         )
         groups_gs = GridSpecFromSubplotSpec(
@@ -323,6 +330,9 @@ def plot_scatter_1d_multisample(
                 href=spec["href"],
                 reverse_y=spec["reverse_y"],
                 plot_chrname=last_row and last_group and not has_profile,
+                xlabel=(
+                    xlabel if (last_row and last_group and not has_profile) else None
+                ),
                 mb_ticks=mb_ticks,
                 mb_tick_step=mb_tick_step,
                 rasterized=rasterized,
@@ -342,6 +352,10 @@ def plot_scatter_1d_multisample(
         plot_cnv_profile(
             ax_profile, seg_df, genome_axis, ax_leg=ax_legend, **profile_kwargs
         )
+        if xlabel is not None:
+            # NB: the profile ticks its chromosomes on top, so the name goes there too.
+            ax_profile.set_xlabel(display_label(xlabel), fontsize=FS_AXLABEL)
+            ax_profile.xaxis.set_label_position("top")
     return fig
 
 
@@ -388,7 +402,8 @@ def plot_heatmap_cnp(
         profile_hspace: Space between the heatmap and the profile below it; holds
             the chromosome labels drawn on top of the profile. None picks 0.35,
             or 0.45 under ``mb_ticks``, whose rotated Mb labels take the same
-            band.
+            band, and raises that floor on a short page so the fixed-size labels
+            keep the same gap in inches however tall the figure is.
         top: Top of the axes block in figure fraction; the space above holds the
             title.
         profile: "cnv" draws the joint integer-CN profile
@@ -409,7 +424,10 @@ def plot_heatmap_cnp(
     if profile not in ("cnv", "ascn"):
         raise ValueError("profile must be 'cnv' or 'ascn'")
     if profile_hspace is None:
-        profile_hspace = 0.45 if heatmap_kwargs.get("mb_ticks") else 0.35
+        base = 0.45 if heatmap_kwargs.get("mb_ticks") else 0.35
+        # NB: hspace is a fraction of axes height; the labels are not, so short pages
+        # need a larger fraction to hold the same band.
+        profile_hspace = max(base, 4.5 / figsize[1])
     heatmap_kwargs.setdefault("show_colorbar", True)
     heatmap_kwargs.setdefault("show_block_labels", False)
     heatmap_kwargs["plot_chrname"] = False

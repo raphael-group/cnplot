@@ -72,6 +72,31 @@ MAX_NDOTS = 5000
 # off the spine; ticks still run 0.0 to 1.0, the pad being too small to label.
 BAF_LIM = (-0.01, 1.01)
 
+# Fontsizes
+FS_TICK = 14
+FS_AXLABEL = 18
+FS_AXTITLE = 16
+FS_TITLE = 20
+FS_LEGEND = 12
+
+# Display names for plotted quantities. A log2 ratio still reads as "RDR" on an
+# axis, which is how the heatmap already labels its colorbar; the 1D rows follow
+# so the two figures name the same quantity the same way.
+AXIS_LABELS = {"log2RDR": "RDR"}
+
+
+def display_label(name: str | None) -> str | None:
+    """Canonical axis text for a quantity name.
+
+    Args:
+        name: Column or label name, or None.
+
+    Returns:
+        The display name from :data:`AXIS_LABELS`, or ``name`` unchanged when it
+        has no canonical form. None passes through.
+    """
+    return name if name is None else AXIS_LABELS.get(name, name)
+
 
 # =============================================================================
 # Axis decoration
@@ -192,7 +217,7 @@ def decorate_genome_axis(
     plot_chrname: bool = True,
     label_pos: str = "bottom",
     rotation: float = 60,
-    fontsize: int = 8,
+    fontsize: int = FS_TICK,
     hide_spines: bool = False,
     pad_axis: bool = False,
     mb_ticks: bool = False,
@@ -215,7 +240,7 @@ def decorate_genome_axis(
         rotation: Tick label rotation in degrees, applied to the chromosome names
             or, with ``mb_ticks``, to the Mb labels; rotating keeps the dense Mb
             labels from overlapping. Chromosome names stay upright in that mode.
-        fontsize: Label font size.
+        fontsize: Label font size; defaults to the module-level FS_TICK.
         hide_spines: Hide all four spines.
         pad_axis: Use the padded limits instead of tight genome ends.
         mb_ticks: Mark position in Mb every ``mb_tick_step`` bp within each

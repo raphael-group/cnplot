@@ -24,7 +24,11 @@ from matplotlib.collections import LineCollection
 from .cnplot_genome_axis import GenomeAxis
 from .cnplot_utils import (
     EXP_PREFIX,
+    FS_AXLABEL,
+    FS_AXTITLE,
+    FS_LEGEND,
     decorate_genome_axis,
+    display_label,
     draw_chr_boundaries,
     draw_segment_boundaries,
     resolve_colors,
@@ -168,6 +172,7 @@ def plot_scatter_1d(
     edgewidth: float = 0.0,
     ylim: tuple | None = None,
     ylabel: str | None = None,
+    xlabel: str | None = None,
     title: str | None = None,
     href: float | None = None,
     reverse_y: bool = False,
@@ -210,8 +215,13 @@ def plot_scatter_1d(
         edgecolor: Marker edge color.
         edgewidth: Marker edge width.
         ylim: Fixed (lo, hi), or None to leave the autoscale alone.
-        ylabel: Y-axis label.
-        title: Axes title, drawn left-aligned.
+        ylabel: Y-axis label, passed through
+            :func:`~cnplot.cnplot_utils.display_label`.
+        xlabel: X-axis label, drawn under the chromosome ticks and passed through
+            :func:`~cnplot.cnplot_utils.display_label`. None leaves the axis
+            unnamed, which suits a stacked panel whose bottom row carries it.
+        title: Axes title, drawn left-aligned at FS_AXTITLE -- it labels one row
+            of a stack, so it stays below the y-axis label that names the quantity.
         href: Y value for a dotted grey reference line, e.g. 0.5 on a BAF row.
         reverse_y: Invert the y-axis.
         plot_chrname: Draw chromosome labels under the axes.
@@ -273,7 +283,8 @@ def plot_scatter_1d(
             label=label,
         )
     if keep_col is not None and show_legend:
-        ax.legend(loc="upper right", fontsize=8, markerscale=2, framealpha=0.7)
+        # NB: lower right -- a legend at the top is the first thing the eye reaches.
+        ax.legend(loc="lower right", fontsize=FS_LEGEND, markerscale=2, framealpha=0.7)
     if rasterized:
         for coll in ax.collections:
             coll.set_rasterized(True)
@@ -295,9 +306,9 @@ def plot_scatter_1d(
     if ylim is not None:
         ax.set_ylim(*ylim)
     if ylabel is not None:
-        ax.set_ylabel(ylabel, fontsize=12, fontweight="bold")
+        ax.set_ylabel(display_label(ylabel), fontsize=FS_AXLABEL)
     if title is not None:
-        ax.set_title(title, fontsize=12, fontweight="bold", loc="left")
+        ax.set_title(title, fontsize=FS_AXTITLE, fontweight="bold", loc="left", pad=4.0)
     decorate_genome_axis(
         ax,
         genome_axis,
@@ -305,5 +316,7 @@ def plot_scatter_1d(
         mb_ticks=mb_ticks,
         mb_tick_step=mb_tick_step,
     )
+    if xlabel is not None:
+        ax.set_xlabel(display_label(xlabel), fontsize=FS_AXLABEL)
     if reverse_y:
         ax.invert_yaxis()

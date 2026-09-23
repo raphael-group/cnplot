@@ -32,6 +32,7 @@ from .cnplot_utils import (
     EXP_PREFIX,
     NORMAL_CLONE,
     SAMPLE_COL,
+    display_label,
     resolve_colors,
     resolve_marker_size,
 )
@@ -418,8 +419,8 @@ def plot_scatter_2d(
                 )
 
     grid.set_axis_labels(
-        xlabel=xcol if xlabel is None else xlabel,
-        ylabel=ycol if ylabel is None else ylabel,
+        xlabel=display_label(xcol if xlabel is None else xlabel),
+        ylabel=display_label(ycol if ylabel is None else ylabel),
         fontsize=12,
     )
     if title is not None:

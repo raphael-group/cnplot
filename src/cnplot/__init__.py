@@ -50,9 +50,15 @@ from .cnplot_heatmap import plot_column_strips, plot_heatmap, plot_strip_legend
 from .cnplot_intcnp import plot_cnv_profile
 from .cnplot_io_utils import read_bed, read_chr_sizes
 from .cnplot_utils import (
+    AXIS_LABELS,
     BAF_LIM,
     CN_PREFIX,
     EXP_PREFIX,
+    FS_AXLABEL,
+    FS_AXTITLE,
+    FS_LEGEND,
+    FS_TICK,
+    FS_TITLE,
     MARKER_SIZE_LARGE,
     MARKER_SIZE_SMALL,
     MAX_NDOTS,
@@ -63,6 +69,7 @@ from .cnplot_utils import (
     FigureSaver,
     adaptive_dot_size,
     decorate_genome_axis,
+    display_label,
     draw_chr_boundaries,
     draw_segment_boundaries,
     get_clone_ylabels,
@@ -97,6 +104,7 @@ def _read_version() -> str:
 __version__ = _read_version()
 
 __all__ = [
+    "AXIS_LABELS",
     "BAF_COLORS",
     "BAF_LIM",
     "CELLTYPE_CMAP",
@@ -104,6 +112,11 @@ __all__ = [
     "DATASET_CMAP",
     "DEFAULT_EXCLUDED_CHROMS",
     "EXP_PREFIX",
+    "FS_AXLABEL",
+    "FS_AXTITLE",
+    "FS_LEGEND",
+    "FS_TICK",
+    "FS_TITLE",
     "MARKER_SIZE_LARGE",
     "MARKER_SIZE_SMALL",
     "MAX_NDOTS",
@@ -126,6 +139,7 @@ __all__ = [
     "adaptive_dot_size",
     "annotate_landmarks",
     "decorate_genome_axis",
+    "display_label",
     "draw_chr_boundaries",
     "draw_segment_boundaries",
     "get_ascn_cmap",
