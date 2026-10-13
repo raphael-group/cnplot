@@ -24,6 +24,12 @@ from matplotlib.cm import ScalarMappable
 from matplotlib.patches import Patch, Rectangle
 
 from .cnplot_genome_axis import GenomeAxis
+from .cnplot_style import (
+    FS_AXLABEL,
+    FS_AXTITLE,
+    FS_LEGEND,
+    FS_TICK,
+)
 from .cnplot_utils import (
     decorate_genome_axis,
     draw_chr_boundaries,
@@ -156,9 +162,9 @@ def plot_heatmap(
 
     ax.set_ylim(0.0, height)
     if ylabel is not None:
-        ax.set_ylabel(ylabel, rotation=90, va="center")
+        ax.set_ylabel(ylabel, rotation=90, va="center", fontsize=FS_AXLABEL)
     if title is not None:
-        ax.set_title(title)
+        ax.set_title(title, fontsize=FS_AXTITLE)
     decorate_genome_axis(
         ax,
         genome_axis,
@@ -177,17 +183,25 @@ def plot_heatmap(
     # right-side chrome, left to right: colorbar, then one legend per strip
     right = None
     if show_colorbar:
-        ax.figure.canvas.draw()
+        fig = ax.figure
+        fig.canvas.draw()
         box = ax.get_position()
-        # short bar (Copytyping uses height / 5), bottom-aligned to the mesh
-        cax = ax.figure.add_axes([box.x1 + 0.012, box.y0, 0.01, box.height * cbar_frac])
-        cbar = ax.figure.colorbar(mesh, cax=cax)
+        x0 = box.x1 + 0.012
+        cax = fig.add_axes([x0, box.y0, 0.01, box.height * cbar_frac])
+        cbar = fig.colorbar(mesh, cax=cax)
         if cbar_ticks is not None:
             cbar.set_ticks(cbar_ticks)
+        cax.tick_params(labelsize=FS_TICK)
+        # NB: the bar grows until neighbouring tick labels clear each other
+        pitch = 1.25 * FS_TICK / 72.0 / fig.get_figheight()
+        fit = pitch * (len(cbar.get_ticks()) - 1)
+        bar_h = min(box.height, max(box.height * cbar_frac, fit))
+        cax.set_position([x0, box.y0, 0.01, bar_h])
         if cbar_label is not None:
-            # label above the bar rather than alongside it
-            cax.set_title(cbar_label, fontsize=10, fontweight="bold", pad=4)
-        right = box.x1 + 0.06
+            cax.set_title(cbar_label, fontsize=FS_LEGEND, fontweight="bold", pad=4)
+        fig.canvas.draw()
+        extent = cax.get_tightbbox()
+        right = extent.x1 / fig.bbox.width + 0.01
 
     if strips:
         info = plot_column_strips(ax.figure, ax, y_edges, strips)
@@ -236,7 +250,7 @@ def _draw_row_blocks(
 
     if show_block_labels:
         ax.set_yticks(yticks)
-        ax.set_yticklabels(yticklabels, fontsize=11, fontweight="bold")
+        ax.set_yticklabels(yticklabels, fontsize=FS_TICK, fontweight="bold")
     else:
         ax.set_yticks([])
 
@@ -391,7 +405,7 @@ def _finish_strip_axis(ax: plt.Axes, label: str, base_ax: plt.Axes) -> None:
         base_ax: Heatmap axes whose y-limits the strip matches.
     """
     ax.set_xticks([0.5])
-    ax.set_xticklabels([label], rotation=90, fontsize=11, fontweight="bold")
+    ax.set_xticklabels([label], rotation=90, fontsize=FS_TICK, fontweight="bold")
     ax.tick_params(axis="x", labeltop=True, labelbottom=False, top=False, bottom=False)
     ax.set_yticks([])
     ax.set_ylim(base_ax.get_ylim())
@@ -462,8 +476,7 @@ def plot_strip_legend(
     base_ax: plt.Axes,
     legends_info: list,
     x0: float,
-    entry_h: float = 0.038,
-    gap: float = 0.06,
+    gap: float | None = None,
 ) -> float:
     """Stack one categorical legend per strip, top-aligned, at figure-x ``x0``.
 
@@ -472,8 +485,8 @@ def plot_strip_legend(
         base_ax: Heatmap axes the legends align to at the top.
         legends_info: The list :func:`plot_column_strips` returns.
         x0: Left edge of the legends, in figure fraction.
-        entry_h: Height of one legend entry, in figure fraction.
-        gap: Space between legends, in figure fraction.
+        gap: Space between legends, in figure fraction; None takes half a
+            legend line. Each legend's own height is measured, not assumed.
 
     Returns:
         The y of the last legend's bottom, for anything stacked below.
@@ -481,20 +494,24 @@ def plot_strip_legend(
     fig.canvas.draw()
     bbox = base_ax.get_position()
     y_top = bbox.y1
+    pt = 1.0 / 72.0 / fig.get_figheight()
+    if gap is None:
+        gap = 0.5 * FS_LEGEND * pt
     for name, color_dict, prop_dict in legends_info:
         # a continuous strip contributes a horizontal colorbar, not a swatch legend
         if "__cbar__" in color_dict:
             cmap, norm, ticks = color_dict["__cbar__"]
             cbar_w, cbar_h = 0.1, 0.012
-            cax = fig.add_axes([x0, y_top - entry_h, cbar_w, cbar_h])
+            y_top -= 1.5 * FS_LEGEND * pt + cbar_h
+            cax = fig.add_axes([x0, y_top, cbar_w, cbar_h])
             sm = ScalarMappable(norm=norm, cmap=cmap)
             sm.set_array([])
             cbar = fig.colorbar(sm, cax=cax, orientation="horizontal")
             if ticks is not None:
                 cbar.set_ticks(ticks)
-            cax.tick_params(labelsize=9)
-            cax.set_title(name, fontsize=13, fontweight="bold", pad=4)
-            y_top -= entry_h * 2.5 + gap
+            cax.tick_params(labelsize=FS_TICK)
+            cax.set_title(name, fontsize=FS_LEGEND, fontweight="bold", pad=4)
+            y_top -= 1.5 * FS_TICK * pt + gap
             continue
         handles = [
             Patch(facecolor=col, label=f"{v}: {prop_dict.get(v, 0.0) * 100:.2f}%")
@@ -506,10 +523,10 @@ def plot_strip_legend(
             loc="upper left",
             bbox_to_anchor=(x0, y_top),
             frameon=False,
-            fontsize=13,
-            title_fontsize=15,
+            fontsize=FS_LEGEND,
+            title_fontsize=FS_LEGEND,
         )
         leg.get_title().set_fontweight("bold")
         fig.add_artist(leg)
-        y_top -= entry_h * (len(handles) + 1) + gap
+        y_top -= leg.get_window_extent().height / fig.bbox.height + gap
     return y_top

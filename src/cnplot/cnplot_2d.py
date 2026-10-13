@@ -28,6 +28,11 @@ from .cnplot_intcnp import (
     get_clone_states,
     select_sample,
 )
+from .cnplot_style import (
+    FS_ANNOT,
+    FS_AXTITLE,
+    FS_LEGEND,
+)
 from .cnplot_utils import (
     EXP_PREFIX,
     NORMAL_CLONE,
@@ -100,7 +105,7 @@ def annotate_landmarks(
     landmarks: list,
     markersize: float = 30,
     linewidth: float = 1.0,
-    fontsize: int = 9,
+    fontsize: int = FS_ANNOT,
     color="black",
 ) -> None:
     """Draw hollow markers with repelled ``(a, b)`` labels.
@@ -411,7 +416,7 @@ def plot_scatter_2d(
                 grid.ax_joint.legend(
                     handles=handles,
                     loc="best",
-                    fontsize="small",
+                    fontsize=FS_LEGEND,
                     fancybox=True,
                     framealpha=0.7,
                     handlelength=0,
@@ -421,9 +426,9 @@ def plot_scatter_2d(
     grid.set_axis_labels(
         xlabel=display_label(xcol if xlabel is None else xlabel),
         ylabel=display_label(ycol if ylabel is None else ylabel),
-        fontsize=12,
+        fontsize=FS_AXTITLE,
     )
     if title is not None:
-        grid.figure.suptitle(title, fontsize=12, fontweight="bold")
+        grid.figure.suptitle(title, fontsize=FS_AXTITLE, fontweight="bold")
     grid.figure.tight_layout()
     return grid
