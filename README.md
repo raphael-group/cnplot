@@ -1,6 +1,6 @@
 # CN-Plot
 
-[![Version](https://img.shields.io/badge/version-0.1.1b1-blue.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-0.1.1b2-blue.svg)](VERSION)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![Code style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 

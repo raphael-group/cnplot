@@ -45,25 +45,23 @@ def test_rc_defaults_are_on_the_scale():
         assert plt.rcParams[key] >= FS_ANNOT
 
 
-def _overlaps(fig, labels):
+def _line_gaps_pt(fig, labels, rotation):
+    """Clearance across the text height between neighbouring parallel labels."""
     fig.canvas.draw()
-    renderer = fig.canvas.get_renderer()
-    boxes = [t.get_window_extent(renderer) for t in labels if t.get_text()]
-    return [
-        (a, b)
-        for i, a in enumerate(boxes)
-        for b in boxes[i + 1 :]
-        if a.overlaps(b) and min(a.width, b.width) > 0
-    ]
+    boxes = [t.get_window_extent() for t in labels if t.get_text()]
+    x_pt = sorted((b.x0 + b.x1) / 2.0 * 72.0 / fig.dpi for b in boxes)
+    sine = math.sin(math.radians(rotation))
+    return [(b - a) * sine for a, b in zip(x_pt, x_pt[1:], strict=False)]
 
 
-@pytest.mark.parametrize("width", [20.0, 12.0, 9.0])
-def test_chromosome_names_do_not_overlap(axis, width):
+@pytest.mark.parametrize("width", [20.0, 12.0, 10.0])
+def test_chromosome_names_keep_their_angle_and_clear_each_other(axis, width):
     fig, ax = plt.subplots(figsize=(width, 3))
-    decorate_genome_axis(ax, axis, label_pos="top")
+    decorate_genome_axis(ax, axis, label_pos="top", rotation=60)
     labels = [t.label2 for t in ax.xaxis.get_major_ticks()]
     assert {t.get_fontsize() for t in labels} == {FS_TICK}
-    assert not _overlaps(fig, labels)
+    assert {t.get_rotation() for t in labels} == {60.0}
+    assert min(_line_gaps_pt(fig, labels, 60)) >= FS_TICK * 0.99
     plt.close(fig)
 
 

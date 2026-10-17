@@ -501,7 +501,7 @@ def plot_cnv_profile(
         props,
         ylabel,
         title,
-        label_fontweight="bold",
+        label_fontweight=None,
         tick_pad=4,
     )
     if ax_leg is not None:
@@ -650,7 +650,6 @@ def _plot_cnv_legend(
         pair_h / 2.0,
         "CNA",
         fontsize=fontsize,
-        fontweight="bold",
         ha="right",
         va="center",
     )

@@ -250,7 +250,7 @@ def _draw_row_blocks(
 
     if show_block_labels:
         ax.set_yticks(yticks)
-        ax.set_yticklabels(yticklabels, fontsize=FS_TICK, fontweight="bold")
+        ax.set_yticklabels(yticklabels, fontsize=FS_TICK)
     else:
         ax.set_yticks([])
 

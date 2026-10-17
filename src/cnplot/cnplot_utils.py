@@ -218,7 +218,7 @@ _CHRNAME_CHARS = 5
 _MB_CHARS = 3
 # Mb labels sit this far under the chromosome-name size.
 _MB_SHRINK = 3
-# Width one upright label needs, in font sizes.
+# Space one line of text needs across its height, in font sizes.
 _LINE = 1.1
 
 
@@ -236,6 +236,27 @@ def _label_extent_pt(n_chars: int, fontsize: float, rotation: float) -> float:
     length = _GLYPH_ADVANCE * fontsize * n_chars
     angle = math.radians(rotation)
     return length * abs(math.sin(angle)) + fontsize * abs(math.cos(angle))
+
+
+def _chrname_pitch(fontsize: float, rotation: float) -> float:
+    """Spacing along the axis two neighbouring chromosome names need, in points.
+
+    Parallel labels clear each other either side by side, a line apart across
+    their height, or end to end, a label length apart along their baseline;
+    the smaller of the two spacings is enough.
+
+    Args:
+        fontsize: Name font size in points.
+        rotation: Label rotation in degrees.
+
+    Returns:
+        The spacing in points.
+    """
+    angle = math.radians(rotation)
+    length = _GLYPH_ADVANCE * fontsize * (_CHRNAME_CHARS + 1)
+    side_by_side = _LINE * fontsize / max(abs(math.sin(angle)), 1e-6)
+    end_to_end = length / max(abs(math.cos(angle)), 1e-6)
+    return min(side_by_side, end_to_end)
 
 
 def genome_label_room(
@@ -258,7 +279,7 @@ def genome_label_room(
         chrnames: The lower axes writes chromosome names along its top.
         fontsize: Chromosome-name font size; Mb labels are derived from it as
             :func:`decorate_genome_axis` does.
-        rotation: Label rotation in degrees.
+        rotation: Label rotation in degrees, of the names and the Mb labels.
         pad: Clear space added around the labels, in points.
         tiers: Rows of chromosome names, from :func:`chrname_tiers`.
 
@@ -267,7 +288,7 @@ def genome_label_room(
     """
     room = pad
     if chrnames:
-        room += tiers * _label_extent_pt(_CHRNAME_CHARS, fontsize, 90)
+        room += tiers * _label_extent_pt(_CHRNAME_CHARS, fontsize, rotation)
         room += pad / 2
     if mb_ticks:
         room += _label_extent_pt(_MB_CHARS, max(fontsize - _MB_SHRINK, 4), rotation)
@@ -291,11 +312,14 @@ def _positions_pt(ax: plt.Axes, positions) -> np.ndarray:
 
 
 def chrname_tiers(
-    genome_axis: GenomeAxis, axes_width_in: float, fontsize: float = FS_TICK
+    genome_axis: GenomeAxis,
+    axes_width_in: float,
+    fontsize: float = FS_TICK,
+    rotation: float = 60,
 ) -> int:
     """How many rows the chromosome names need on an axes this wide: 1 or 2.
 
-    Upright names need one line of width each. Names closer than that are
+    Rotated names need a line of clearance each. Names closer than that are
     nudged apart along the axis (:func:`decorate_genome_axis`), which works as
     long as the axes is wide enough to hold them all in one row; past that,
     every second crowded name goes on a second row and a layout has to leave
@@ -305,12 +329,13 @@ def chrname_tiers(
         genome_axis: Axis supplying the name positions.
         axes_width_in: Width of the axes in inches.
         fontsize: Name font size in points.
+        rotation: Name rotation in degrees.
 
     Returns:
         2 where one row cannot hold every name, else 1.
     """
     n = len(genome_axis.xtick_chrs)
-    return 2 if n * _LINE * fontsize > axes_width_in * 72.0 else 1
+    return 2 if n * _chrname_pitch(fontsize, rotation) > axes_width_in * 72.0 else 1
 
 
 def _spread(at: np.ndarray, need: float) -> np.ndarray:
@@ -368,11 +393,10 @@ def decorate_genome_axis(
         rotation: Tick label rotation in degrees, applied to the chromosome names
             or, with ``mb_ticks``, to the Mb labels; rotating keeps the dense Mb
             labels from overlapping. Chromosome names stay upright in that mode.
-            Chromosome names closer together than one line at this angle are
-            drawn at 90 degrees instead and nudged apart along the axis; on an
-            axes too narrow to hold them in one row, every second crowded name
-            goes on a second row. Mb labels too close to the previous one are
-            left blank.
+            Chromosome names closer together than one line at this angle keep
+            the angle and are nudged apart along the axis; on an axes too
+            narrow to hold them in one row, every second crowded name goes on a
+            second row. Mb labels too close to the previous one are left blank.
         fontsize: Label font size; defaults to the module-level FS_TICK.
         hide_spines: Hide all four spines.
         pad_axis: Use the padded limits instead of tight genome ends.
@@ -447,15 +471,10 @@ def decorate_genome_axis(
         return
 
     ax.set_xticks(genome_axis.xtick_chrs)
-    # NB: names that would touch at this angle stand upright instead
-    at = _positions_pt(ax, genome_axis.xtick_chrs)
-    line = fontsize / max(math.sin(math.radians(max(rotation, 1.0))), 1e-6)
-    crowded = len(at) > 1 and float(np.diff(np.sort(at)).min()) < line
-    if crowded:
-        rotation = 90
     ax.set_xticklabels(genome_axis.xlab_chrs, rotation=rotation, fontsize=fontsize)
-    if crowded:
-        need = _LINE * fontsize
+    at = _positions_pt(ax, genome_axis.xtick_chrs)
+    need = _chrname_pitch(fontsize, rotation)
+    if len(at) > 1 and float(np.diff(np.sort(at)).min()) < need:
         ticks = ax.xaxis.get_major_ticks()
         width_pt = ax.get_position().width * ax.figure.get_figwidth() * 72.0
         if len(at) * need <= width_pt:
@@ -466,7 +485,7 @@ def decorate_genome_axis(
                     label.set_transform(label.get_transform() + shift)
         else:
             # NB: one row cannot hold them; alternate crowded names go up a row
-            lift = _label_extent_pt(_CHRNAME_CHARS, fontsize, 90) + 4.0
+            lift = _label_extent_pt(_CHRNAME_CHARS, fontsize, rotation) + 4.0
             last = [-math.inf, -math.inf]
             base = plt.rcParams["xtick.major.pad"]
             for i in np.argsort(at):

@@ -3,6 +3,9 @@
 ## Unreleased
 
 ### cnplot package
+- Clone names are set in the regular weight: the clone labels beside the integer-CN profile
+  and the `<label> (<pct>%)` row-block labels on the heatmap. The CN key's `CNA` title is
+  regular as well.
 - `BAF_LIM = (-0.01, 1.01)`: default limits for a BAF-like axis on [0, 1], exported from
   `cnplot`. The pad keeps points at exactly 0 or 1 off the spine while the ticks still run
   0.0 to 1.0. Used by the gallery/README BAF row (`ylim`) and the RDR-vs-BAF scatter
@@ -26,9 +29,10 @@
   - the `plot_heatmap_cnp` title is anchored above the mesh rather than at a fixed
     figure height.
 - Genome-axis labels are placed so they clear each other at the type scale:
-  - chromosome names closer together than a line are drawn upright and nudged apart along
-    the axis; on an axes too narrow to hold them in one row, alternate crowded names go on
-    a second row (`chrname_tiers` tells a layout which case applies);
+  - chromosome names keep their `rotation` (60 degrees by default); names closer together
+    than a line at that angle are nudged apart along the axis, and on an axes too narrow
+    to hold them in one row, alternate crowded names go on a second row (`chrname_tiers`
+    tells a layout which case applies);
   - in Mb mode an Mb label within a line of the previous one is left blank (its tick mark
     stays), the chromosome names under the Mb labels are offset in points rather than as a
     fraction of the axes, and on a stacked page only the last row labels its Mb ticks;
