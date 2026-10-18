@@ -29,15 +29,26 @@ from .cnplot_intcnp import (
     plot_cnv_profile,
     select_sample,
 )
-from .cnplot_utils import (
+from .cnplot_style import (
     FS_AXLABEL,
+    FS_LEGEND,
+    FS_TITLE,
+)
+from .cnplot_utils import (
     NORMAL_CLONE,
     SAMPLE_COL,
+    chrname_tiers,
     display_label,
+    genome_label_room,
     resolve_marker_size,
 )
 
 logger = logging.getLogger(__name__)
+
+# Share of a figure's width its main axes takes under matplotlib's default margins.
+_AXES_FRAC = 0.775
+# Space left between a profile and the key under it, in inches.
+_KEY_GAP_IN = 0.25
 
 __all__ = [
     "make_row_spec",
@@ -89,7 +100,7 @@ def _draw_prop_legend(
         handles=handles,
         loc="center left",
         bbox_to_anchor=(1.01, 0.5),
-        fontsize="small",
+        fontsize=FS_LEGEND,
         fancybox=True,
         framealpha=0.7,
         handlelength=0,
@@ -263,7 +274,10 @@ def plot_scatter_1d_multisample(
     has_profile = seg_df is not None
     rows_h = row_height * n_rows * n_groups
     profile_h = 2.0 if has_profile else 0.0
-    fig_h = rows_h + profile_h + 0.5
+    # NB: the rows-to-profile gap holds the profile's names and the last row's Mb labels
+    tiers = chrname_tiers(genome_axis, _AXES_FRAC * row_width)
+    room = genome_label_room(mb_ticks=mb_ticks, tiers=tiers) if has_profile else 0.0
+    fig_h = rows_h + profile_h + 0.5 + room
     fig = plt.figure(figsize=(row_width, fig_h))
 
     # Nested so the three gaps stay independent: rows within a group, group to
@@ -271,6 +285,9 @@ def plot_scatter_1d_multisample(
     # NB: a top-side xlabel sits in the rows-to-profile gap; 0.2 clears the row above.
     gap = max(profile_hspace, 0.2) if xlabel is not None else profile_hspace
     if has_profile:
+        # NB: hspace is a fraction of the mean cell height; solve it for `room` inches
+        avail = (0.97 - fig.subplotpars.bottom) * fig_h
+        gap = max(gap, 2.0 * room / max(avail - room, room))
         outer = GridSpec(
             2,
             1,
@@ -337,6 +354,9 @@ def plot_scatter_1d_multisample(
                 mb_tick_step=mb_tick_step,
                 rasterized=rasterized,
             )
+            if mb_ticks and not (last_row and last_group):
+                # NB: stacked rows share the x axis; only the last one labels it
+                ax.tick_params(axis="x", labelbottom=False)
             if last_row and show_props and seg_df is not None:
                 _draw_prop_legend(
                     ax, seg_df, group, group_col, normal, display_min_clone_prop
@@ -425,9 +445,13 @@ def plot_heatmap_cnp(
         raise ValueError("profile must be 'cnv' or 'ascn'")
     if profile_hspace is None:
         base = 0.45 if heatmap_kwargs.get("mb_ticks") else 0.35
-        # NB: hspace is a fraction of axes height; the labels are not, so short pages
-        # need a larger fraction to hold the same band.
-        profile_hspace = max(base, 4.5 / figsize[1])
+        # NB: hspace is a fraction of the mean axes height; solve it for inches
+        room = genome_label_room(
+            mb_ticks=bool(heatmap_kwargs.get("mb_ticks")),
+            tiers=chrname_tiers(genome_axis, _AXES_FRAC * figsize[0]),
+        )
+        avail = (top - plt.rcParams["figure.subplot.bottom"]) * figsize[1]
+        profile_hspace = max(base, 3.0 * room / max(avail - 2.0 * room, room))
     heatmap_kwargs.setdefault("show_colorbar", True)
     heatmap_kwargs.setdefault("show_block_labels", False)
     heatmap_kwargs["plot_chrname"] = False
@@ -439,6 +463,10 @@ def plot_heatmap_cnp(
         3, 1, figsize=figsize, gridspec_kw={"height_ratios": list(height_ratios)}
     )
     fig.subplots_adjust(top=top, hspace=profile_hspace)
+    # NB: hspace also opens the profile-to-key gap, which holds no labels; close it
+    prof, key = axes[1].get_position(), axes[2].get_position()
+    lift = max(prof.y0 - key.y1 - _KEY_GAP_IN / figsize[1], 0.0)
+    axes[2].set_position([key.x0, key.y0 + lift, key.width, key.height])
 
     plot_heatmap(axes[0], matrix, coords_df, genome_axis, **heatmap_kwargs)
     draw_profile(
@@ -450,5 +478,7 @@ def plot_heatmap_cnp(
         **profile_kwargs,
     )
     if title is not None:
-        fig.suptitle(title, fontsize=14, fontweight="bold", y=0.98)
+        # NB: anchored to the mesh, so a taller title grows the page upward
+        y = axes[0].get_position().y1 + 0.5 * FS_TITLE / 72.0 / figsize[1]
+        fig.suptitle(title, fontsize=FS_TITLE, fontweight="bold", y=y, va="bottom")
     return fig

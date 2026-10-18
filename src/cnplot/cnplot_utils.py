@@ -10,7 +10,10 @@ in :mod:`cnplot.cnplot_io_utils`.
 """
 
 import contextlib
+import functools
 import logging
+import math
+import threading
 
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
@@ -18,8 +21,10 @@ import numpy as np
 import pandas as pd
 from matplotlib.backends import backend_pdf
 from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.transforms import ScaledTranslation
 
 from .cnplot_genome_axis import GenomeAxis
+from .cnplot_style import FS_TICK
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +41,9 @@ __all__ = [
     "SAMPLE_COL",
     "U_PREFIX",
     "adaptive_dot_size",
+    "chrname_tiers",
     "decorate_genome_axis",
+    "genome_label_room",
     "draw_chr_boundaries",
     "draw_segment_boundaries",
     "get_clone_ylabels",
@@ -71,13 +78,6 @@ MAX_NDOTS = 5000
 # Default limits for a BAF-like axis on [0, 1]. The pad keeps points at 0 or 1
 # off the spine; ticks still run 0.0 to 1.0, the pad being too small to label.
 BAF_LIM = (-0.01, 1.01)
-
-# Fontsizes
-FS_TICK = 14
-FS_AXLABEL = 18
-FS_AXTITLE = 16
-FS_TITLE = 20
-FS_LEGEND = 12
 
 # Display names for plotted quantities. A log2 ratio still reads as "RDR" on an
 # axis, which is how the heatmap already labels its colorbar; the 1D rows follow
@@ -211,6 +211,159 @@ def _mb_tick_positions(genome_axis: GenomeAxis, step: float) -> tuple:
     return positions, labels
 
 
+# Mean glyph advance of the figure face, as a fraction of the font size.
+_GLYPH_ADVANCE = 0.55
+# Characters in the longest label of each kind: "chr22", "200".
+_CHRNAME_CHARS = 5
+_MB_CHARS = 3
+# Mb labels sit this far under the chromosome-name size.
+_MB_SHRINK = 3
+# Space one line of text needs across its height, in font sizes.
+_LINE = 1.1
+
+
+def _label_extent_pt(n_chars: int, fontsize: float, rotation: float) -> float:
+    """How far a rotated tick label reaches away from its axis, in points.
+
+    Args:
+        n_chars: Characters in the label.
+        fontsize: Font size in points.
+        rotation: Rotation in degrees.
+
+    Returns:
+        The extent perpendicular to the axis.
+    """
+    length = _GLYPH_ADVANCE * fontsize * n_chars
+    angle = math.radians(rotation)
+    return length * abs(math.sin(angle)) + fontsize * abs(math.cos(angle))
+
+
+def _chrname_pitch(fontsize: float, rotation: float) -> float:
+    """Spacing along the axis two neighbouring chromosome names need, in points.
+
+    Parallel labels clear each other either side by side, a line apart across
+    their height, or end to end, a label length apart along their baseline;
+    the smaller of the two spacings is enough.
+
+    Args:
+        fontsize: Name font size in points.
+        rotation: Label rotation in degrees.
+
+    Returns:
+        The spacing in points.
+    """
+    angle = math.radians(rotation)
+    length = _GLYPH_ADVANCE * fontsize * (_CHRNAME_CHARS + 1)
+    side_by_side = _LINE * fontsize / max(abs(math.sin(angle)), 1e-6)
+    end_to_end = length / max(abs(math.cos(angle)), 1e-6)
+    return min(side_by_side, end_to_end)
+
+
+def genome_label_room(
+    mb_ticks: bool = False,
+    chrnames: bool = True,
+    fontsize: float = FS_TICK,
+    rotation: float = 60,
+    pad: float = 10.0,
+    tiers: int = 1,
+) -> float:
+    """Height the genome-axis labels between two stacked axes need, in inches.
+
+    The gap between a row and the profile under it holds the profile's
+    chromosome names and, in Mb mode, the row's Mb tick labels. A layout sizes
+    that gap from this instead of from a fixed fraction, so the two sets of
+    labels clear each other at any font size.
+
+    Args:
+        mb_ticks: The upper axes labels its x axis in Mb along its bottom.
+        chrnames: The lower axes writes chromosome names along its top.
+        fontsize: Chromosome-name font size; Mb labels are derived from it as
+            :func:`decorate_genome_axis` does.
+        rotation: Label rotation in degrees, of the names and the Mb labels.
+        pad: Clear space added around the labels, in points.
+        tiers: Rows of chromosome names, from :func:`chrname_tiers`.
+
+    Returns:
+        The room in inches.
+    """
+    room = pad
+    if chrnames:
+        room += tiers * _label_extent_pt(_CHRNAME_CHARS, fontsize, rotation)
+        room += pad / 2
+    if mb_ticks:
+        room += _label_extent_pt(_MB_CHARS, max(fontsize - _MB_SHRINK, 4), rotation)
+        room += pad / 2
+    return room / 72.0
+
+
+def _positions_pt(ax: plt.Axes, positions) -> np.ndarray:
+    """Axis x positions as points along the axes, for spacing labels.
+
+    Args:
+        ax: Axes with its x limits already set.
+        positions: X positions in data coordinates.
+
+    Returns:
+        The positions in points from the axes' left edge.
+    """
+    x0, x1 = ax.get_xlim()
+    width_pt = ax.get_position().width * ax.figure.get_figwidth() * 72.0
+    return (np.asarray(positions, dtype=float) - x0) / (x1 - x0) * width_pt
+
+
+def chrname_tiers(
+    genome_axis: GenomeAxis,
+    axes_width_in: float,
+    fontsize: float = FS_TICK,
+    rotation: float = 60,
+) -> int:
+    """How many rows the chromosome names need on an axes this wide: 1 or 2.
+
+    Rotated names need a line of clearance each. Names closer than that are
+    nudged apart along the axis (:func:`decorate_genome_axis`), which works as
+    long as the axes is wide enough to hold them all in one row; past that,
+    every second crowded name goes on a second row and a layout has to leave
+    room for it.
+
+    Args:
+        genome_axis: Axis supplying the name positions.
+        axes_width_in: Width of the axes in inches.
+        fontsize: Name font size in points.
+        rotation: Name rotation in degrees.
+
+    Returns:
+        2 where one row cannot hold every name, else 1.
+    """
+    n = len(genome_axis.xtick_chrs)
+    return 2 if n * _chrname_pitch(fontsize, rotation) > axes_width_in * 72.0 else 1
+
+
+def _spread(at: np.ndarray, need: float) -> np.ndarray:
+    """Positions moved the least that leaves neighbours ``need`` apart.
+
+    The mean of a left-to-right and a right-to-left sweep: each sweep is the
+    closest feasible placement that only pushes one way, and their mean stays
+    feasible while sharing the displacement between both neighbours.
+
+    Args:
+        at: Positions, in any order.
+        need: Smallest spacing wanted between neighbours.
+
+    Returns:
+        The adjusted positions, in the input's order.
+    """
+    order = np.argsort(at)
+    fwd = at[order].astype(float)
+    back = fwd.copy()
+    for i in range(1, len(fwd)):
+        fwd[i] = max(fwd[i], fwd[i - 1] + need)
+    for i in range(len(back) - 2, -1, -1):
+        back[i] = min(back[i], back[i + 1] - need)
+    out = np.empty(len(at), dtype=float)
+    out[order] = (fwd + back) / 2.0
+    return out
+
+
 def decorate_genome_axis(
     ax: plt.Axes,
     genome_axis: GenomeAxis,
@@ -240,6 +393,10 @@ def decorate_genome_axis(
         rotation: Tick label rotation in degrees, applied to the chromosome names
             or, with ``mb_ticks``, to the Mb labels; rotating keeps the dense Mb
             labels from overlapping. Chromosome names stay upright in that mode.
+            Chromosome names closer together than one line at this angle keep
+            the angle and are nudged apart along the axis; on an axes too
+            narrow to hold them in one row, every second crowded name goes on a
+            second row. Mb labels too close to the previous one are left blank.
         fontsize: Label font size; defaults to the module-level FS_TICK.
         hide_spines: Hide all four spines.
         pad_axis: Use the padded limits instead of tight genome ends.
@@ -269,28 +426,42 @@ def decorate_genome_axis(
     if mb_ticks:
         positions, labels = _mb_tick_positions(genome_axis, mb_tick_step)
         ax.set_xticks(positions)
+        # NB: a label nearer than one rotated line to the last one kept is left blank
+        need = max(fontsize - _MB_SHRINK, 4) / max(
+            math.sin(math.radians(rotation)), 0.5
+        )
+        kept = -math.inf
+        labels = list(labels)
+        for i, x in enumerate(_positions_pt(ax, positions)):
+            if x - kept < need:
+                labels[i] = ""
+            else:
+                kept = x
         ax.set_xticklabels(
             labels,
-            fontsize=max(fontsize - 3, 4),
+            fontsize=max(fontsize - _MB_SHRINK, 4),
             rotation=rotation,
             ha="left" if on_top else "right",
             rotation_mode="anchor",
         )
         ax.tick_params(axis="x", length=2, labeltop=on_top, labelbottom=not on_top)
         if plot_chrname:
-            y = 1.10 if on_top else -0.10
-            va = "bottom" if on_top else "top"
+            # NB: offset in points, so the names clear the Mb labels at any axes height
+            mb_fs = max(fontsize - _MB_SHRINK, 4)
+            clear = _label_extent_pt(_MB_CHARS, mb_fs, rotation) + 8.0
             for x, name in zip(
                 genome_axis.xtick_chrs, genome_axis.xlab_chrs, strict=True
             ):
-                ax.text(
-                    x,
-                    y,
+                ax.annotate(
                     str(name).upper().removeprefix("CHR"),
+                    xy=(x, 1.0 if on_top else 0.0),
+                    xycoords=ax.get_xaxis_transform(),
+                    xytext=(0, clear if on_top else -clear),
+                    textcoords="offset points",
                     ha="center",
-                    va=va,
+                    va="bottom" if on_top else "top",
                     fontsize=fontsize,
-                    transform=ax.get_xaxis_transform(),
+                    annotation_clip=False,
                 )
         return
 
@@ -301,6 +472,26 @@ def decorate_genome_axis(
 
     ax.set_xticks(genome_axis.xtick_chrs)
     ax.set_xticklabels(genome_axis.xlab_chrs, rotation=rotation, fontsize=fontsize)
+    at = _positions_pt(ax, genome_axis.xtick_chrs)
+    need = _chrname_pitch(fontsize, rotation)
+    if len(at) > 1 and float(np.diff(np.sort(at)).min()) < need:
+        ticks = ax.xaxis.get_major_ticks()
+        width_pt = ax.get_position().width * ax.figure.get_figwidth() * 72.0
+        if len(at) * need <= width_pt:
+            # NB: nudged apart along the axis; no tick mark is drawn to betray it
+            for tick, dx in zip(ticks, _spread(at, need) - at, strict=True):
+                shift = ScaledTranslation(dx / 72.0, 0, ax.figure.dpi_scale_trans)
+                for label in (tick.label1, tick.label2):
+                    label.set_transform(label.get_transform() + shift)
+        else:
+            # NB: one row cannot hold them; alternate crowded names go up a row
+            lift = _label_extent_pt(_CHRNAME_CHARS, fontsize, rotation) + 4.0
+            last = [-math.inf, -math.inf]
+            base = plt.rcParams["xtick.major.pad"]
+            for i in np.argsort(at):
+                tier = 0 if at[i] - last[0] >= need else 1
+                last[tier] = at[i]
+                ticks[i].set_pad(base + tier * lift)
     ax.tick_params(
         axis="x",
         labeltop=on_top,
@@ -666,6 +857,129 @@ def _compact_rasterized_images():
         backend_pdf.PdfFile.imageObject = original
 
 
+class _TrueColorImage:
+    """Stand-in for ``PIL.Image`` while ``PdfFile._writeImg`` runs.
+
+    Every image it builds reports more colours than a palette can hold, so the
+    backend takes its continuous-tone path: 8 bits per component, DeviceRGB,
+    Flate with a PNG predictor. Everything else is the real module's.
+
+    Attributes:
+        calls: Images built so far, so the hook can tell it is still consulted.
+    """
+
+    def __init__(self, module):
+        """Wrap the real ``PIL.Image`` module.
+
+        Args:
+            module: The ``PIL.Image`` module the backend imported.
+        """
+        self._module = module
+        self.calls = 0
+
+    def __getattr__(self, name):
+        """Defer every other attribute to the real module.
+
+        Args:
+            name: Attribute requested by the backend.
+
+        Returns:
+            The real module's attribute.
+        """
+        return getattr(self._module, name)
+
+    def fromarray(self, *args, **kwargs):
+        """Build an image that declines to enumerate its colours.
+
+        Args:
+            *args: Passed to ``PIL.Image.fromarray``.
+            **kwargs: Passed to ``PIL.Image.fromarray``.
+
+        Returns:
+            The image, with ``getcolors`` answering None.
+        """
+        self.calls += 1
+        img = self._module.fromarray(*args, **kwargs)
+        img.getcolors = lambda *a, **k: None
+        return img
+
+
+def _write_truecolor_images() -> bool:
+    """Stop the PDF backend storing rasterized layers as palette images.
+
+    With ``pdf.compression`` on, ``PdfFile._writeImg`` stores an RGB raster of
+    256 or fewer distinct colours as an ``/Indexed`` image, and the index stream
+    is packed at 1, 2 or 4 bits per pixel when the palette is small. Vector
+    editors read sub-byte packed indices unreliably and draw the layer in the
+    wrong colours. A copy-number raster has a few state colours, so it always
+    takes that branch. matplotlib tracks the symptom in issue 27893 and has no
+    setting for it.
+
+    The backend decides by asking Pillow for the image's colours. For the
+    duration of each ``_writeImg`` call the backend's ``Image`` module is swapped
+    for :class:`_TrueColorImage`, which sends the raster down the backend's own
+    continuous-tone path. Nothing of matplotlib's is reimplemented, compression
+    stays on for every stream, and the rendered pixels are unchanged.
+
+    Installed on import rather than inside :class:`FigureSaver`: the backend
+    writes images when the file is finalized, not when a figure is saved, and a
+    caller that opens its own ``PdfPages`` or calls ``Figure.savefig`` must get
+    the same output.
+
+    ``_writeImg`` and the backend's ``Image`` name are private to matplotlib. If
+    either is missing the hook is skipped with a warning and output is whatever
+    that matplotlib writes. If both exist but a compressed image is written
+    without the backend building it through ``Image``, the hook no longer
+    decides the encoding and says so once. The swap is held under a lock, so
+    figures saved from several threads get the same encoding.
+
+    References:
+        https://github.com/matplotlib/matplotlib/issues/27893
+
+    Returns:
+        True if the hook was installed; False if it already was, or if this
+        matplotlib lacks the internals it relies on.
+    """
+    original = getattr(backend_pdf.PdfFile, "_writeImg", None)
+    pil_image = getattr(backend_pdf, "Image", None)
+    if original is None or pil_image is None:
+        logger.warning(
+            "matplotlib PDF backend changed; rasterized layers may be written "
+            "as palette images"
+        )
+        return False
+    if getattr(original, "_cnplot_truecolor", False):
+        return False
+    proxy = _TrueColorImage(pil_image)
+    lock = threading.RLock()
+    warned = []
+
+    @functools.wraps(original)
+    def _writeImg(self, *args, **kwargs):
+        with lock:
+            seen = proxy.calls
+            backend_pdf.Image = proxy
+            try:
+                return original(self, *args, **kwargs)
+            finally:
+                backend_pdf.Image = pil_image
+                bypassed = plt.rcParams["pdf.compression"] and proxy.calls == seen
+                if bypassed and not warned:
+                    warned.append(True)
+                    logger.warning(
+                        "matplotlib PDF backend no longer builds images through "
+                        "PIL.Image; rasterized layers may be written as palette "
+                        "images"
+                    )
+
+    _writeImg._cnplot_truecolor = True
+    backend_pdf.PdfFile._writeImg = _writeImg
+    return True
+
+
+_write_truecolor_images()
+
+
 class FigureSaver:
     """Multi-figure writer, a drop-in for ``PdfPages``.
 
@@ -727,9 +1041,10 @@ class FigureSaver:
         self._page += 1
 
     def close(self) -> None:
-        """Close the multi-page PDF, if one was opened."""
+        """Close the multi-page PDF, if one is open. Safe to call again."""
         if self._pdf is not None:
             self._pdf.close()
+            self._pdf = None
 
     def __enter__(self) -> "FigureSaver":
         """Enter the context manager.

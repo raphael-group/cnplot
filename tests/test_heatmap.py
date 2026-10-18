@@ -249,7 +249,8 @@ def test_mb_ticks_on_heatmap(axis, sim, saved):
         mb_ticks=True,
         mb_tick_step=20_000_000,
     )
-    labels = [t.get_text() for t in ax.get_xticklabels()]
+    # crowded ticks keep their mark and lose their label
+    labels = [t.get_text() for t in ax.get_xticklabels() if t.get_text()]
     assert labels and all(lbl.isdigit() for lbl in labels)  # Mb integers
     assert "0" not in labels  # chromosome-start tick dropped
     # chromosome names drawn as bold off-axis text, one per chromosome

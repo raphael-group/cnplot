@@ -1,6 +1,6 @@
 # CN-Plot
 
-[![Version](https://img.shields.io/badge/version-0.1.1-blue.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-0.1.1b2-blue.svg)](VERSION)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![Code style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
@@ -47,7 +47,7 @@ from cnplot import plot_cnv_profile
 
 seg_df = pd.read_table("sample.seg.ucn.tsv")
 
-fig, (ax, ax_leg) = plt.subplots(2, 1, figsize=(12, 3), height_ratios=[3, 1])
+fig, (ax, ax_leg) = plt.subplots(2, 1, figsize=(20, 3.5), height_ratios=[3, 1])
 plot_cnv_profile(ax, seg_df, genome_axis, sample_id="S1", ax_leg=ax_leg,
                  title="Integer copy-number profile")
 fig.savefig("profile.png", bbox_inches="tight")   # returns None; you own the figure
@@ -140,6 +140,7 @@ fig = plot_heatmap_cnp(
     title="Single-cell RDR heatmap",
     row_labels=cell_labels, cmap=cmap, norm=norm,
     cbar_label="RDR", cbar_ticks=ticks,
+    figsize=(20, 9),
     mb_ticks=True,                       # Mb ticks every 50Mb per chromosome
     strips=[
         {"name": "Copy-typing", "matrix": posteriors, "order": clones, "cmap": clone_cmap},

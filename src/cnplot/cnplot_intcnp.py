@@ -23,6 +23,12 @@ from matplotlib.patches import Rectangle
 
 from .cnplot_colormap import get_ascn_cmap, get_cn_cmap
 from .cnplot_genome_axis import GenomeAxis
+from .cnplot_style import (
+    FS_AXLABEL,
+    FS_AXTITLE,
+    FS_LEGEND,
+    FS_TICK,
+)
 from .cnplot_utils import (
     CN_PREFIX,
     NORMAL_CLONE,
@@ -120,17 +126,19 @@ def _finish_clone_axis(
         clone_props=clone_props,
     )
     if label_fontweight is None:
-        ax.set_yticklabels(labels, fontsize=8, va="center")
+        ax.set_yticklabels(labels, fontsize=FS_TICK, va="center")
     else:
-        ax.set_yticklabels(labels, fontsize=8, fontweight=label_fontweight, va="center")
+        ax.set_yticklabels(
+            labels, fontsize=FS_TICK, fontweight=label_fontweight, va="center"
+        )
     ax.set_ylim(0, height)
     ax.tick_params(
         axis="y", which="major", left=True, right=False, length=4, pad=tick_pad
     )
     if ylabel is not None:
-        ax.set_ylabel(ylabel, rotation=0, ha="right", va="center")
+        ax.set_ylabel(ylabel, rotation=0, ha="right", va="center", fontsize=FS_AXLABEL)
     if title is not None:
-        ax.set_title(title)
+        ax.set_title(title, fontsize=FS_AXTITLE)
 
 
 def _mirrored_bins(states: np.ndarray) -> np.ndarray:
@@ -198,51 +206,6 @@ def _draw_chevrons(
             solid_capstyle="round",
             **kwargs,
         )
-
-
-def _draw_mirror_swatch(
-    ax: plt.Axes,
-    leg_x: float,
-    pair_w: float = 2.0,
-    pair_h: float = 0.6,
-    fontsize: int = 10,
-) -> float:
-    """Draw the mirrored-CNA swatch: a "/"-hatched white box labeled "mirrored".
-
-    Args:
-        ax: Axes to draw on.
-        leg_x: Left edge of the swatch.
-        pair_w: Swatch width.
-        pair_h: Swatch height.
-        fontsize: Label font size.
-
-    Returns:
-        The x position just past the swatch.
-    """
-    ax.add_patch(
-        Rectangle(
-            (leg_x, 0.0),
-            pair_w,
-            pair_h,
-            facecolor="white",
-            edgecolor="black",
-            hatch="/",
-        )
-    )
-    ax.text(
-        leg_x + pair_w / 2.0,
-        -0.2,
-        "mirrored",
-        ha="center",
-        va="top",
-        fontsize=fontsize,
-    )
-    return leg_x + pair_w
-
-
-# =============================================================================
-# seg.ucn parsing
-# =============================================================================
 
 
 def select_sample(
@@ -538,7 +501,7 @@ def plot_cnv_profile(
         props,
         ylabel,
         title,
-        label_fontweight="bold",
+        label_fontweight=None,
         tick_pad=4,
     )
     if ax_leg is not None:
@@ -549,17 +512,64 @@ def plot_cnv_profile(
         )
 
 
+def _text_width_pt(ax: plt.Axes, text: str, fontsize: float) -> float:
+    """Rendered width of ``text`` at ``fontsize``, in points.
+
+    Args:
+        ax: Axes whose figure supplies the renderer.
+        text: String to measure.
+        fontsize: Font size in points.
+
+    Returns:
+        The width in points.
+    """
+    fig = ax.figure
+    probe = ax.text(0, 0, text, fontsize=fontsize)
+    width = probe.get_window_extent().width
+    probe.remove()
+    return width * 72.0 / fig.dpi
+
+
+def _wrap_groups(widths: list, n_rows: int) -> list:
+    """Split consecutive groups into ``n_rows`` rows of near-equal width.
+
+    Args:
+        widths: Width of each group, in order.
+        n_rows: Number of rows wanted.
+
+    Returns:
+        One list of group indices per row; fewer than ``n_rows`` only when
+        there are fewer groups.
+    """
+    target = sum(widths) / n_rows
+    rows, row, acc = [], [], 0.0
+    for i, w in enumerate(widths):
+        if row and acc + w / 2.0 > target and len(rows) < n_rows - 1:
+            rows.append(row)
+            row, acc = [], 0.0
+        row.append(i)
+        acc += w
+    rows.append(row)
+    return rows
+
+
 def _plot_cnv_legend(
     ax: plt.Axes,
     has_mirror: bool = True,
     pair_w: float = 2.0,
     pair_h: float = 0.6,
-    fontsize: int = 10,
+    fontsize: int = FS_LEGEND,
 ) -> None:
     """Draw the integer copy-number legend, grouped by total copy number.
 
     Mirrored pairs share a swatch since (1, 2) and (2, 1) share a color; the "/"
     hatch distinguishes them. A trailing box covers total CN above 7.
+
+    Each state is labelled ``(a,b)`` under its swatch. The key takes as many
+    rows as it needs for the widest label to fit under one swatch at
+    ``fontsize``: groups wrap to further rows below the axes, the notation and
+    the font size stay as they are. Rows past the first are drawn outside the
+    axes, so save with a tight bounding box.
 
     Args:
         ax: Axes to draw on. Its own frame is turned off.
@@ -573,65 +583,78 @@ def _plot_cnv_legend(
     state_style, tcn_states = get_cn_cmap()
     ax.axis("off")
 
-    gap_pairs = 0.0
     gap_groups = 0.75 * pair_w
     mirror_gap = 1.5 * pair_w
-    leg_x = 0.0
+    left = 2.0
+    y_lo, y_hi = -0.8, pair_h + 0.8
 
+    groups = []
     for _total, states in sorted(tcn_states.items()):
         uniq_pairs = sorted({tuple(sorted(s, reverse=True)) for s in states})
-        group_x0 = leg_x
-        for i, pair in enumerate(uniq_pairs):
-            x0 = group_x0 + i * (pair_w + gap_pairs)
-            ax.add_patch(
-                Rectangle(
-                    (x0, 0.0),
-                    pair_w,
-                    pair_h,
-                    facecolor=state_style[pair],
-                    edgecolor="black",
-                )
-            )
-            ax.text(
-                x0 + pair_w / 2.0,
-                -0.2,
-                f"{pair}",
-                ha="center",
-                va="top",
-                fontsize=fontsize,
-            )
-        group_w = len(uniq_pairs) * pair_w + (len(uniq_pairs) - 1) * gap_pairs
-        leg_x = group_x0 + group_w + gap_groups
-
-    ax.add_patch(
-        Rectangle(
-            (leg_x, 0.0),
-            pair_w,
-            pair_h,
-            facecolor=state_style["default"],
-            edgecolor="black",
+        groups.append(
+            [(f"({a},{b})", state_style[(a, b)], None) for a, b in uniq_pairs]
         )
-    )
-    ax.text(leg_x + pair_w / 2.0, -0.2, ">7", ha="center", va="top", fontsize=fontsize)
-    leg_x += pair_w + gap_groups
-
+    groups.append([(">7", state_style["default"], None)])
+    label_pt = max(_text_width_pt(ax, lab, fontsize) for g in groups for lab, _, _ in g)
+    lead = [0.0] * len(groups)
     if has_mirror:
-        leg_x = _draw_mirror_swatch(
-            ax, leg_x + mirror_gap, pair_w=pair_w, pair_h=pair_h, fontsize=fontsize
-        )
-        leg_x += mirror_gap
+        groups.append([("mirrored", "white", "/")])
+        lead.append(mirror_gap)
+    widths = [len(g) * pair_w for g in groups]
+
+    def span(row):
+        return sum(widths[i] + lead[i] for i in row) + gap_groups * (len(row) - 1)
+
+    fig = ax.figure
+    ax_w_pt = ax.get_position().width * fig.get_figwidth() * 72.0
+    ax_h_pt = ax.get_position().height * fig.get_figheight() * 72.0
+    for n_rows in range(1, len(groups) + 1):
+        rows = _wrap_groups(widths, n_rows)
+        total = left + max(span(row) for row in rows)
+        if ax_w_pt * pair_w / total >= 1.5 * label_pt:
+            break
+
+    # NB: one row is a swatch, its label, and a gap of half a label
+    unit_pt = ax_h_pt / (y_hi - y_lo)
+    pitch = pair_h + 0.2 + 1.7 * fontsize / unit_pt
+    for r, row in enumerate(rows):
+        y0 = -r * pitch
+        x = 0.0
+        for i in row:
+            x += lead[i]
+            for label, color, hatch in groups[i]:
+                ax.add_patch(
+                    Rectangle(
+                        (x, y0),
+                        pair_w,
+                        pair_h,
+                        facecolor=color,
+                        edgecolor="black",
+                        hatch=hatch,
+                        clip_on=False,
+                    )
+                )
+                ax.text(
+                    x + pair_w / 2.0,
+                    y0 - 0.2,
+                    label,
+                    ha="center",
+                    va="top",
+                    fontsize=fontsize,
+                )
+                x += pair_w
+            x += gap_groups
 
     ax.text(
         -0.5,
         pair_h / 2.0,
         "CNA",
-        fontsize=fontsize + 2,
-        fontweight="bold",
+        fontsize=fontsize,
         ha="right",
         va="center",
     )
-    ax.set_xlim(-2.0, leg_x)
-    ax.set_ylim(-0.8, pair_h + 0.8)
+    ax.set_xlim(-left, total - left)
+    ax.set_ylim(y_lo, y_hi)
     ax.set_aspect("auto")
 
 
@@ -802,7 +825,7 @@ def plot_ascn_profile(
         minor_positions += [k * h + y_gap + h_sub * 0.5, k * h + y_gap + h_sub * 1.5]
         minor_labels += ["B", "A"]
     ax.set_yticks(minor_positions, minor=True)
-    ax.set_yticklabels(minor_labels, minor=True, fontsize=6)
+    ax.set_yticklabels(minor_labels, minor=True, fontsize=FS_TICK)
     ax.tick_params(axis="y", which="minor", left=False, right=False, pad=2)
 
     _finish_clone_axis(
@@ -831,7 +854,7 @@ def _plot_ascn_legend(
     box_w: float = 1.2,
     box_h: float = 0.4,
     tick_len: float = 0.08,
-    label_fontsize: int = 12,
+    label_fontsize: int = FS_LEGEND,
     show_mirror: bool = True,
 ) -> None:
     """Draw the allele copy-number legend as a horizontal ramp.

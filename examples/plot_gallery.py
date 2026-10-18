@@ -28,6 +28,7 @@ sys.path.insert(0, os.path.join(HERE, "..", "tests"))
 
 from cnplot import (  # noqa: E402
     BAF_LIM,
+    FS_TITLE,
     GenomeAxis,
     get_baf_cmap,
     get_log2rdr_cmap,
@@ -50,7 +51,7 @@ def save(fig, name):
 
 
 def suptitle(fig, text, y=1.0):
-    fig.suptitle(text, fontsize=14, fontweight="bold", y=y)
+    fig.suptitle(text, fontsize=FS_TITLE, fontweight="bold", y=y)
 
 
 genome_axis = GenomeAxis(*reference())
@@ -64,7 +65,7 @@ palette = get_mixcn_cmap(
 )
 
 # 1. integer copy-number profile
-fig, (ax, lg) = plt.subplots(2, 1, figsize=(12, 3), height_ratios=[3, 1])
+fig, (ax, lg) = plt.subplots(2, 1, figsize=(20, 3.5), height_ratios=[3, 1])
 plot_cnv_profile(
     ax, sim.seg_ucn, genome_axis, sample_id="S1", ax_leg=lg, show_pi_viol=False
 )
@@ -166,6 +167,7 @@ for matrix, cmap, norm, label, ticks, out in [
         cbar_label=label,
         cbar_ticks=ticks,
         strips=strips,
+        figsize=(20, 9),
         mb_ticks=True,
         profile_kwargs={"show_pi_viol": False},
     )

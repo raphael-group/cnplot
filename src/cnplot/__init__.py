@@ -49,16 +49,21 @@ from .cnplot_genome_axis import (
 from .cnplot_heatmap import plot_column_strips, plot_heatmap, plot_strip_legend
 from .cnplot_intcnp import plot_cnv_profile
 from .cnplot_io_utils import read_bed, read_chr_sizes
-from .cnplot_utils import (
-    AXIS_LABELS,
-    BAF_LIM,
-    CN_PREFIX,
-    EXP_PREFIX,
+from .cnplot_style import (
+    FONT_FAMILY,
+    FS_ANNOT,
     FS_AXLABEL,
     FS_AXTITLE,
     FS_LEGEND,
     FS_TICK,
     FS_TITLE,
+    apply_style,
+)
+from .cnplot_utils import (
+    AXIS_LABELS,
+    BAF_LIM,
+    CN_PREFIX,
+    EXP_PREFIX,
     MARKER_SIZE_LARGE,
     MARKER_SIZE_SMALL,
     MAX_NDOTS,
@@ -68,10 +73,12 @@ from .cnplot_utils import (
     U_PREFIX,
     FigureSaver,
     adaptive_dot_size,
+    chrname_tiers,
     decorate_genome_axis,
     display_label,
     draw_chr_boundaries,
     draw_segment_boundaries,
+    genome_label_room,
     get_clone_ylabels,
     get_transparency,
     resolve_colors,
@@ -104,6 +111,7 @@ def _read_version() -> str:
 __version__ = _read_version()
 
 __all__ = [
+    "apply_style",
     "AXIS_LABELS",
     "BAF_COLORS",
     "BAF_LIM",
@@ -112,6 +120,8 @@ __all__ = [
     "DATASET_CMAP",
     "DEFAULT_EXCLUDED_CHROMS",
     "EXP_PREFIX",
+    "FONT_FAMILY",
+    "FS_ANNOT",
     "FS_AXLABEL",
     "FS_AXTITLE",
     "FS_LEGEND",
@@ -138,7 +148,9 @@ __all__ = [
     "__version__",
     "adaptive_dot_size",
     "annotate_landmarks",
+    "chrname_tiers",
     "decorate_genome_axis",
+    "genome_label_room",
     "display_label",
     "draw_chr_boundaries",
     "draw_segment_boundaries",

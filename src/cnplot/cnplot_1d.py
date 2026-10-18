@@ -22,11 +22,13 @@ import pandas as pd
 from matplotlib.collections import LineCollection
 
 from .cnplot_genome_axis import GenomeAxis
-from .cnplot_utils import (
-    EXP_PREFIX,
+from .cnplot_style import (
     FS_AXLABEL,
     FS_AXTITLE,
     FS_LEGEND,
+)
+from .cnplot_utils import (
+    EXP_PREFIX,
     decorate_genome_axis,
     display_label,
     draw_chr_boundaries,
