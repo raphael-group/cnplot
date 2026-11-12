@@ -1,9 +1,10 @@
 """Integer copy-number profile and its self-drawn legend."""
 
+import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from cnplot import plot_cnv_profile
+from cnplot import get_cn_cmap, plot_cnv_profile
 from cnplot.cnplot_intcnp import get_clone_names, get_clone_states, has_mirror
 
 
@@ -94,3 +95,19 @@ def test_unknown_sample_raises(axis, sim):
         fig, ax = plt.subplots()
         plot_cnv_profile(ax, sim.seg_ucn, axis, sample_id="NOPE")
     plt.close("all")
+
+
+def test_cnamaste_palette_colors_profile_and_key(axis, sim):
+    style, _ = get_cn_cmap("cnamaste")
+    allowed = {mcolors.to_hex(c) for c in style.values()}
+    fig, (ax, lg) = plt.subplots(2, 1)
+    plot_cnv_profile(
+        ax, sim.seg_ucn, axis, sample_id="S1", ax_leg=lg, cn_palette="cnamaste"
+    )
+    faces = [p.get_facecolor() for p in ax.patches]
+    bins = {mcolors.to_hex(c) for c in faces if c[3] > 0}
+    assert bins and bins <= allowed
+    labels = [t.get_text() for t in lg.texts]
+    assert "(2,0)" in labels and ">6" in labels
+    assert ">7" not in labels and "(4,3)" not in labels
+    plt.close(fig)

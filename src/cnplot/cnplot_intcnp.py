@@ -370,6 +370,7 @@ def plot_cnv_profile(
     contain: bool = True,
     legend_kwargs: dict | None = None,
     rasterized: bool = True,
+    cn_palette: str = "hatchet",
 ) -> None:
     """Draw a stacked integer copy-number profile, one row per clone.
 
@@ -415,9 +416,13 @@ def plot_cnv_profile(
         legend_kwargs: Extra styling forwarded to the legend, ignored without
             ``ax_leg``.
         rasterized: Rasterize the rectangles, keeping vector output small.
+        cn_palette: (a, b) palette for the bins and the legend, one of
+            :data:`~cnplot.cnplot_colormap.CN_PALETTES`; see
+            :func:`~cnplot.cnplot_colormap.get_cn_cmap`.
 
     Raises:
-        ValueError: If ``seg_df`` is empty or has no clone left to draw.
+        ValueError: If ``seg_df`` is empty, has no clone left to draw, or
+            ``cn_palette`` is unknown.
     """
     if seg_df.empty:
         raise ValueError("seg_df is empty")
@@ -432,7 +437,7 @@ def plot_cnv_profile(
     props = get_clone_proportions(seg_df, clones) if show_prop else None
     pi_viol = get_pi_viol(seg_df) if show_pi_viol else None
 
-    state_style, _ = get_cn_cmap()
+    state_style, _ = get_cn_cmap(cn_palette)
     mirrored = _mirrored_bins(states) if show_mirror else None
     num_clones = len(clones)
     h = height / num_clones
@@ -508,6 +513,7 @@ def plot_cnv_profile(
         _plot_cnv_legend(
             ax_leg,
             has_mirror=mirrored is not None and bool(mirrored.any()),
+            cn_palette=cn_palette,
             **(legend_kwargs or {}),
         )
 
@@ -559,11 +565,13 @@ def _plot_cnv_legend(
     pair_w: float = 2.0,
     pair_h: float = 0.6,
     fontsize: int = FS_LEGEND,
+    cn_palette: str = "hatchet",
 ) -> None:
     """Draw the integer copy-number legend, grouped by total copy number.
 
     Mirrored pairs share a swatch since (1, 2) and (2, 1) share a color; the "/"
-    hatch distinguishes them. A trailing box covers total CN above 7.
+    hatch distinguishes them. A trailing box covers the totals above the
+    palette's largest, ">7" under "hatchet" and ">6" under "cnamaste".
 
     Each state is labelled ``(a,b)`` under its swatch. The key takes as many
     rows as it needs for the widest label to fit under one swatch at
@@ -578,9 +586,11 @@ def _plot_cnv_legend(
         pair_w: Width of each swatch.
         pair_h: Height of each swatch.
         fontsize: Swatch label font size.
+        cn_palette: (a, b) palette, one of
+            :data:`~cnplot.cnplot_colormap.CN_PALETTES`.
 
     """
-    state_style, tcn_states = get_cn_cmap()
+    state_style, tcn_states = get_cn_cmap(cn_palette)
     ax.axis("off")
 
     gap_groups = 0.75 * pair_w
@@ -594,7 +604,7 @@ def _plot_cnv_legend(
         groups.append(
             [(f"({a},{b})", state_style[(a, b)], None) for a, b in uniq_pairs]
         )
-    groups.append([(">7", state_style["default"], None)])
+    groups.append([(f">{max(tcn_states)}", state_style["default"], None)])
     label_pt = max(_text_width_pt(ax, lab, fontsize) for g in groups for lab, _, _ in g)
     lead = [0.0] * len(groups)
     if has_mirror:

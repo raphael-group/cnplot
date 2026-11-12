@@ -3,15 +3,18 @@
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
+import pytest
 
 from cnplot import (
     BAF_LIM,
+    CN_PALETTES,
     MARKER_SIZE_LARGE,
     MARKER_SIZE_SMALL,
     get_baf_cmap,
     get_categorical_cmap,
     get_cn_cmap,
     get_log2rdr_cmap,
+    get_mixcn_cmap,
     get_multiclass_cmap,
     resolve_colors,
     resolve_marker_size,
@@ -24,6 +27,39 @@ def test_cn_palette_is_allele_symmetric():
     style, _ = get_cn_cmap()
     assert style[(2, 1)] == style[(1, 2)]
     assert "default" in style
+
+
+def test_cn_palette_defaults_to_hatchet():
+    assert CN_PALETTES == ("hatchet", "cnamaste")
+    assert get_cn_cmap() == get_cn_cmap("hatchet")
+    style, tcn = get_cn_cmap()
+    assert style[(3, 1)] == "orange"
+    assert max(tcn) == 7
+
+
+def test_cnamaste_palette_covers_total_cn_to_6():
+    style, tcn = get_cn_cmap("cnamaste")
+    assert style[(1, 1)] == "#EEEEEE"
+    assert style[(3, 1)] == style[(1, 3)] == "#FEC44F"
+    assert style[(0, 0)] == "#000000"
+    assert (4, 3) not in style
+    assert max(tcn) == 6
+    assert all(len(tcn[t]) == t + 1 for t in range(1, 7))
+    assert style["default"] == get_cn_cmap()[0]["default"]
+
+
+def test_unknown_cn_palette_raises():
+    with pytest.raises(ValueError, match="cn_palette"):
+        get_cn_cmap("viridis")
+
+
+def test_mixcn_clonal_state_takes_the_chosen_palette():
+    cnps = ["1|1;2|0;2|0", "1|1;2|0;1|1"]
+    hatchet = get_mixcn_cmap(cnps)
+    cnamaste = get_mixcn_cmap(cnps, cn_palette="cnamaste")
+    assert hatchet[cnps[0]] == "dimgray"
+    assert cnamaste[cnps[0]] == "#22B5D2"
+    assert cnamaste[cnps[1]] not in get_cn_cmap("cnamaste")[0].values()
 
 
 def test_marker_size_switch():

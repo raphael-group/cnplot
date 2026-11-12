@@ -18,6 +18,7 @@ from .cnplot_2d import annotate_landmarks, get_landmarks, plot_scatter_2d
 from .cnplot_colormap import (
     BAF_COLORS,
     CELLTYPE_CMAP,
+    CN_PALETTES,
     DATASET_CMAP,
     NA_COLOR,
     NA_LABELS,
@@ -116,6 +117,7 @@ __all__ = [
     "BAF_COLORS",
     "BAF_LIM",
     "CELLTYPE_CMAP",
+    "CN_PALETTES",
     "CN_PREFIX",
     "DATASET_CMAP",
     "DEFAULT_EXCLUDED_CHROMS",
