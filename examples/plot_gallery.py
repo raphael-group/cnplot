@@ -7,11 +7,14 @@
 #   cnplot, and the tests/ simulator (tests/simulate.py + tests/data/)
 #
 # Usage:
-#   python examples/plot_gallery.py
+#   python examples/plot_gallery.py [--cn_palette {hatchet,cnamaste}] [--outdir DIR]
+#           --cn_palette    # (a, b) state palette; default hatchet
+#           --outdir        # directory for the PNGs; default examples/
 #
 # Outputs:
-#   examples/{profile,scatter_1d,scatter_2d,fcn_ab,heatmap_rdr,heatmap_baf}.png
+#   <outdir>/{profile,scatter_1d,scatter_2d,fcn_ab,heatmap_rdr,heatmap_baf}.png
 
+import argparse
 import os
 import sys
 
@@ -28,6 +31,7 @@ sys.path.insert(0, os.path.join(HERE, "..", "tests"))
 
 from cnplot import (  # noqa: E402
     BAF_LIM,
+    CN_PALETTES,
     FS_TITLE,
     GenomeAxis,
     get_baf_cmap,
@@ -42,9 +46,16 @@ from cnplot import (  # noqa: E402
 )
 from simulate import CELL_POSTERIORS, load_dataset, reference  # noqa: E402
 
+parser = argparse.ArgumentParser(description="Render the README gallery figures.")
+parser.add_argument("--cn_palette", choices=CN_PALETTES, default="hatchet")
+parser.add_argument("--outdir", default=HERE)
+args = parser.parse_args()
+OUTDIR = os.path.abspath(args.outdir)
+os.makedirs(OUTDIR, exist_ok=True)
+
 
 def save(fig, name):
-    path = os.path.join(HERE, f"{name}.png")
+    path = os.path.join(OUTDIR, f"{name}.png")
     fig.savefig(path, dpi=100, bbox_inches="tight")
     plt.close(fig)
     print(path)
@@ -62,12 +73,19 @@ sim = load_dataset(["S1", "S2"])
 palette = get_mixcn_cmap(
     list(sim.obs["cnp"].unique()),
     [float(sim.seg_ucn[f"u_{c}"].iloc[0]) for c in sim.clones],
+    cn_palette=args.cn_palette,
 )
 
 # 1. integer copy-number profile
 fig, (ax, lg) = plt.subplots(2, 1, figsize=(20, 3.5), height_ratios=[3, 1])
 plot_cnv_profile(
-    ax, sim.seg_ucn, genome_axis, sample_id="S1", ax_leg=lg, show_pi_viol=False
+    ax,
+    sim.seg_ucn,
+    genome_axis,
+    sample_id="S1",
+    ax_leg=lg,
+    show_pi_viol=False,
+    cn_palette=args.cn_palette,
 )
 suptitle(fig, "Integer copy-number profile", y=1.18)
 save(fig, "profile")
@@ -87,6 +105,7 @@ fig = plot_scatter_1d_multisample(
     seg_df=sim.seg_ucn,
     mb_ticks=True,
     show_pi_viol=False,
+    cn_palette=args.cn_palette,
 )
 suptitle(fig, "Genome-wide RDR and BAF (multi-sample)", y=1.0)
 save(fig, "scatter_1d")
@@ -124,6 +143,7 @@ fig = plot_scatter_1d_multisample(
     seg_df=sim.seg_ucn,
     mb_ticks=True,
     show_pi_viol=False,
+    cn_palette=args.cn_palette,
 )
 suptitle(fig, "Allele-specific fractional copy number (FCN-A / FCN-B)", y=1.0)
 save(fig, "fcn_ab")
@@ -169,6 +189,6 @@ for matrix, cmap, norm, label, ticks, out in [
         strips=strips,
         figsize=(20, 9),
         mb_ticks=True,
-        profile_kwargs={"show_pi_viol": False},
+        profile_kwargs={"show_pi_viol": False, "cn_palette": args.cn_palette},
     )
     save(fig, out)

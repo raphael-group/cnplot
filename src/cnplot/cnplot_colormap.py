@@ -3,7 +3,8 @@
 Three independent palettes:
 
 - joint CN states (a, b) -> :func:`get_cn_cmap`, shared by profiles, legends,
-  and scatter points so all three agree.
+  and scatter points so all three agree. ``cn_palette`` picks one of
+  :data:`CN_PALETTES`, "hatchet" by default.
 - per-allele CN -> :func:`get_ascn_cmap`, a sequential ramp for A/B panels.
 - categorical labels -> :func:`get_multiclass_cmap`, which colors several
   annotation strips from one shared palette and keeps "normal" and missing
@@ -23,6 +24,7 @@ import seaborn as sns
 __all__ = [
     "BAF_COLORS",
     "CELLTYPE_CMAP",
+    "CN_PALETTES",
     "DATASET_CMAP",
     "NA_COLOR",
     "NA_LABELS",
@@ -72,10 +74,10 @@ BAF_COLORS = [
 _TUMOR_COLORS = [mcolors.to_hex(c) for c in plt.get_cmap("tab10").colors]
 _TUMOR_COLORS_20 = [mcolors.to_hex(c) for c in plt.get_cmap("tab20").colors]
 
-# Integer CN palette, keyed by (major, minor). Hue tracks total CN and shade
+# "hatchet" integer CN palette, keyed by (major, minor). Hue tracks total CN and shade
 # tracks allelic imbalance, so LOH reads darker than a balanced state of the
 # same total.
-_CN_PALETTE = {
+_HATCHET_PALETTE = {
     (0, 0): "darkblue",
     (1, 0): "lightblue",
     (1, 1): "lightgray",
@@ -98,7 +100,31 @@ _CN_PALETTE = {
     (7, 0): "#4b0082",
 }
 
-# teal-green, distinct from every CN <= 7 color above
+# NB: cnamaste.palette.COPY_STATES; hue by minor-allele fraction, darker for more copies
+_CNAMASTE_PALETTE = {
+    (1, 1): "#EEEEEE",
+    (2, 2): "#FC9272",
+    (3, 3): "#CB181D",
+    (1, 0): "#66D9E8",
+    (2, 0): "#22B5D2",
+    (3, 0): "#1A86C2",
+    (4, 0): "#0D56A0",
+    (5, 0): "#08306B",
+    (6, 0): "#041A3A",
+    (2, 1): "#A1D99B",
+    (4, 2): "#31A354",
+    (3, 1): "#FEC44F",
+    (4, 1): "#6A51A3",
+    (5, 1): "#AE017E",
+    (3, 2): "#F16913",
+    (0, 0): "#000000",
+}
+
+_CN_PALETTE_MAPS = {"hatchet": _HATCHET_PALETTE, "cnamaste": _CNAMASTE_PALETTE}
+
+CN_PALETTES = tuple(_CN_PALETTE_MAPS)
+
+# NB: teal-green, distinct from every color of either palette above
 _CN_DEFAULT_COLOR = "#00cc99"
 
 _CN_COPY_STATES = [
@@ -252,22 +278,40 @@ def _clone_order_key(label: str, na_labels) -> tuple:
 # =============================================================================
 
 
-def get_cn_cmap() -> tuple:
+def get_cn_cmap(cn_palette: str = "hatchet") -> tuple:
     """Return the integer allele-specific copy-number color map and legend order.
 
     Keyed by (a, b) under both orderings, so (2, 1) and (1, 2) render alike.
-    States above total CN 7 fall through to the default color.
+    States the palette does not list fall through to the default color: total
+    CN above 7 under "hatchet", above 6 under "cnamaste".
+
+    Args:
+        cn_palette: One of :data:`CN_PALETTES`. "hatchet" gives hue by total CN
+            and shade by allelic imbalance. "cnamaste" is
+            ``cnamaste.palette.COPY_STATES``: hue by minor-allele fraction
+            (balanced reds from a light-gray (1, 1), LOH cyan to navy, 1/3
+            greens, 1/4 yellow, 1/5 purple, 1/6 magenta, 2/5 orange), darker
+            for more copies.
 
     Returns:
         (state_style, tcn_states): the {(a, b): color} map with a "default"
-        key, and {total_cn: [(a, b), ...]} in the order legends draw them.
+        key, and {total_cn: [(a, b), ...]} in the order legends draw them,
+        holding only the states the palette colors.
+
+    Raises:
+        ValueError: If ``cn_palette`` is not in :data:`CN_PALETTES`.
     """
+    if cn_palette not in _CN_PALETTE_MAPS:
+        raise ValueError(f"cn_palette must be one of {CN_PALETTES}, got {cn_palette!r}")
+    palette = _CN_PALETTE_MAPS[cn_palette]
+
     tcn_states = {}
     for a, b in _CN_COPY_STATES:
-        tcn_states.setdefault(int(a + b), []).append((a, b))
+        if (max(a, b), min(a, b)) in palette:
+            tcn_states.setdefault(int(a + b), []).append((a, b))
 
     state_style = {}
-    for (major, minor), color in _CN_PALETTE.items():
+    for (major, minor), color in palette.items():
         state_style[(major, minor)] = color
         state_style[(minor, major)] = color
     state_style["default"] = _CN_DEFAULT_COLOR
@@ -303,6 +347,7 @@ def get_mixcn_cmap(
     clone_states,
     clone_props=None,
     display_min_clone_prop: float | None = None,
+    cn_palette: str = "hatchet",
 ) -> dict:
     """Map each joint-clone mixture CNP string to a scatter color.
 
@@ -317,11 +362,16 @@ def get_mixcn_cmap(
             normal. None treats every clone as visible.
         display_min_clone_prop: Minimum proportion for a tumor clone to count as
             visible. None treats every clone as visible.
+        cn_palette: Integer-CN palette, one of :data:`CN_PALETTES`; pass the
+            same one to the profile so points and profile agree.
 
     Returns:
         {cnp_string: color} covering every entry of ``clone_states``.
+
+    Raises:
+        ValueError: If ``cn_palette`` is not in :data:`CN_PALETTES`.
     """
-    state_style, _ = get_cn_cmap()
+    state_style, _ = get_cn_cmap(cn_palette)
 
     def visible(j):
         """Test whether clone j is above the display threshold.

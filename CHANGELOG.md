@@ -3,6 +3,14 @@
 ## Unreleased
 
 ### cnplot package
+- A second (a, b) state palette, `"cnamaste"` (`cnamaste.palette.COPY_STATES`: hue by
+  minor-allele fraction, darker for more copies), next to the default, now named
+  `"hatchet"`. Picked with `cn_palette=` on `get_cn_cmap`, `get_mixcn_cmap` and
+  `plot_cnv_profile` (which passes it to its key); `CN_PALETTES` lists the names, for an
+  argparse `choices`. States a palette does not list take the default color, and the
+  key's trailing box is labelled from the palette: `>7` under `"hatchet"`, `>6` under
+  `"cnamaste"`. An unknown name raises `ValueError`. `examples/plot_gallery.py` takes
+  `--cn_palette {hatchet,cnamaste}` and `--outdir`.
 - Clone names are set in the regular weight: the clone labels beside the integer-CN profile
   and the `<label> (<pct>%)` row-block labels on the heatmap. The CN key's `CNA` title is
   regular as well.

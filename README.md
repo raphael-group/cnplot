@@ -55,6 +55,11 @@ fig.savefig("profile.png", bbox_inches="tight")   # returns None; you own the fi
 
 ![profile](examples/profile.png)
 
+The (a, b) state colors come from one of `CN_PALETTES`: `"hatchet"` (default) or
+`"cnamaste"`. Pass the same `cn_palette=` to `plot_cnv_profile` (or through
+`profile_kwargs` of the figure helpers) and to `get_mixcn_cmap`, so points, profile
+and key agree. The gallery script takes it as `--cn_palette {hatchet,cnamaste}`.
+
 ### 2. Genome-wide RDR and BAF (multi-sample)
 We plots the per-bin read-depth ratio (RDR) and B-allele frequency (BAF) for both samples over the shared clonal profile.
 Reference: [`obs_df`](docs/reference.md#obs_df-bin-level-observations), [`expected_df` (1D)](docs/reference.md#expected_df-1d-overlay).
